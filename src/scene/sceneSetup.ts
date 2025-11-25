@@ -19,33 +19,44 @@ export function initScene(
   let controls: OrbitControls;
   let horseAndChariot: THREE.Group;
 
-  // --- Logic variables ---
-  let chariotZPosition = 5;
-  let targetZPosition = 5;
+  // --- LOGIC VARIABLES ---
+  let chariotZPosition = 0; 
+  let targetZPosition = 0;
   let chariotSpeed = 0;
 
-  const STOPS = [5, 0, -147, -227];
+  // Stops
+  const STOPS = [0, -250, -500];
   let currentStopIndex = 0;
 
-  const maxSpeed = 0.9;
-  const acceleration = 0.05;
-  const deceleration = 0.05;
+  // Speed Settings
+  const maxSpeed = 1.5;
+  const acceleration = 0.08;
+  const deceleration = 0.08;
+  const tourMaxSpeed = 2.4; 
+  const tourAcceleration = 0.1;
+  const tourDeceleration = 0.1;
   
-  const tourMaxSpeed = 1.2; 
-  const tourAcceleration = 0.05;
-  const tourDeceleration = 0.05;
-
   const RATH_HEIGHT = 0.3;
+
+  // --- CAMERA CONFIGURATION ---
+  
+  // 1. HERO VIEW (Stopped): Close, low, focused on screen
+  const HERO_OFFSET = new THREE.Vector3(0, 3, 12);
+  
+  // 2. CHASE VIEW (Running): High, far back, wide view of environment
+  const CHASE_OFFSET = new THREE.Vector3(0, 10, 24);
 
   let animationFrameId: number;
   let isRunning = false;
   let isTouring = false;
+  let isLoopingBack = false;
 
   function goTo(z: number, isTour: boolean = false) {
     targetZPosition = z;
     isRunning = true;
     setIsRunning(true);
     isTouring = isTour;
+    isLoopingBack = false;
   }
 
   function init() {
@@ -53,7 +64,8 @@ export function initScene(
 
     const skyColor = 0xFFEA00;
     scene.background = new THREE.Color(skyColor);
-    scene.fog = new THREE.Fog(skyColor, 150, 350);
+    // Increased fog distance slightly so we can see further while running
+    scene.fog = new THREE.Fog(skyColor, 80, 300);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -61,18 +73,8 @@ export function initScene(
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
 
-    camera = new THREE.PerspectiveCamera(
-      60,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      1000
-    );
-
-    // --- FIX: SET INITIAL UP VECTOR TO AVOID FLIPPING ---
-    // At start (Z=5), the globe normal is roughly (0, 0, 1). 
-    // Default camera up is (0, 1, 0). 
-    // Since view direction is along Y, (0,1,0) causes a singularity/flip.
-    camera.up.set(0, 0, 1); 
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.up.set(1, 0, 0); 
 
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -86,23 +88,11 @@ export function initScene(
     const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
     sunLight.position.set(100, 100, 50);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 2048;
-    sunLight.shadow.mapSize.height = 2048;
-    sunLight.shadow.camera.far = 500;
-    sunLight.shadow.camera.left = -150;
-    sunLight.shadow.camera.right = 150;
-    sunLight.shadow.camera.top = 150;
-    sunLight.shadow.camera.bottom = -150;
     scene.add(sunLight);
 
-    const sunGeo = new THREE.SphereGeometry(15, 32, 32);
-    const sunMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const sunMesh = new THREE.Mesh(sunGeo, sunMat);
-    sunMesh.position.copy(sunLight.position).normalize().multiplyScalar(GLOBE_RADIUS * 2.5);
-    scene.add(sunMesh);
-
+    // World Generation
     createGround(scene);
-    createBuildings(scene);
+    createBuildings(scene); 
     createTemples(scene);
     createParks(scene);
     createTrees(scene);
@@ -111,10 +101,11 @@ export function initScene(
     horseAndChariot = chariotCtrl.mesh;
     scene.add(horseAndChariot);
 
+    // Initial Setup
     updateChariotPosition();
     
-    // Snap camera immediately with the corrected UP vector
-    updateCamera(true);
+    // Force snap to Hero View initially (since we are stopped)
+    snapToCameraOffset(HERO_OFFSET);
 
     window.addEventListener('resize', onWindowResize, false);
     window.addEventListener('keydown', onKeyDown);
@@ -123,53 +114,58 @@ export function initScene(
     animate();
   }
 
+  // Helper: Instantly snap camera to a specific offset (used on load/reset)
+  function snapToCameraOffset(offsetVec: THREE.Vector3) {
+    if (!horseAndChariot) return;
+    const worldOffset = offsetVec.clone().applyQuaternion(horseAndChariot.quaternion);
+    const idealPosition = horseAndChariot.position.clone().add(worldOffset);
+    
+    camera.position.copy(idealPosition);
+    camera.up.copy(horseAndChariot.position.clone().normalize());
+    camera.lookAt(horseAndChariot.position);
+    controls.target.copy(horseAndChariot.position);
+    controls.update();
+  }
+
   function updateChariotPosition() {
     if (!horseAndChariot) return;
-
+    
     const { position } = getGlobePosition(0, chariotZPosition, RATH_HEIGHT);
     horseAndChariot.position.copy(position);
-
     horseAndChariot.up.copy(position).normalize();
-
+    
     const moveDir = targetZPosition < chariotZPosition ? -1 : 1;
     const lookAheadPos = getGlobePosition(0, chariotZPosition + moveDir * 1, RATH_HEIGHT).position;
-
+    
     horseAndChariot.lookAt(lookAheadPos);
     horseAndChariot.rotateY(Math.PI); 
   }
 
-  function updateCamera(snap: boolean = false) {
+  function updateCamera() {
     if (!horseAndChariot) return;
 
-    // Calculate Surface Normal
-    const globeNormal = horseAndChariot.position.clone().normalize();
+    // DECIDE TARGET OFFSET
+    // If running, we use CHASE_OFFSET (High/Wide)
+    // If stopped, we use HERO_OFFSET (Low/Close)
+    const targetOffset = isRunning ? CHASE_OFFSET : HERO_OFFSET;
 
-    if (isRunning || snap) {
-      const targetOffset = new THREE.Vector3(0, 5, 13);
-      const worldOffset = targetOffset.clone().applyQuaternion(horseAndChariot.quaternion);
-      const idealPosition = horseAndChariot.position.clone().add(worldOffset);
+    // Calculate World Position
+    const worldOffset = targetOffset.clone().applyQuaternion(horseAndChariot.quaternion);
+    const idealPosition = horseAndChariot.position.clone().add(worldOffset);
 
-      if (snap) {
-        camera.position.copy(idealPosition);
-        // FORCE the Up vector instantly on snap to prevent flipping
-        camera.up.copy(globeNormal);
-        camera.lookAt(horseAndChariot.position);
-      } else {
-        camera.position.lerp(idealPosition, 0.05);
-        
-        // Smoothly adjust Up vector during movement
-        const currentUp = camera.up.clone();
-        currentUp.lerp(globeNormal, 0.1);
-        camera.up.copy(currentUp);
-      }
-    } else {
-      // Even when stopped, we must maintain the correct Up orientation for the orbit controls
-      // otherwise dragging the mouse might flip the camera
-      const currentUp = camera.up.clone();
-      currentUp.lerp(globeNormal, 0.1);
-      camera.up.copy(currentUp);
-    }
+    // Smooth Interpolation
+    // We use a slightly faster lerp (0.05) when running to keep up, 
+    // and a slower one (0.03) when stopping for a smooth landing.
+    const alpha = isRunning ? 0.05 : 0.03;
+    camera.position.lerp(idealPosition, alpha);
     
+    // Smooth Up Vector
+    const globeNormal = horseAndChariot.position.clone().normalize();
+    const currentUp = camera.up.clone();
+    currentUp.lerp(globeNormal, 0.1);
+    camera.up.copy(currentUp);
+
+    // Always look at Chariot
     controls.target.lerp(horseAndChariot.position, 0.1);
     controls.update();
   }
@@ -179,6 +175,12 @@ export function initScene(
       if (currentStopIndex < STOPS.length - 1) {
         currentStopIndex++;
         goTo(STOPS[currentStopIndex], false);
+      } else {
+        currentStopIndex = 0; 
+        targetZPosition = -754; 
+        isRunning = true;
+        setIsRunning(true);
+        isLoopingBack = true; 
       }
     }
     if (event.key === 'ArrowDown' || event.key === 's' || event.key === 'S') {
@@ -219,29 +221,21 @@ export function initScene(
     }
 
     updateChariotPosition();
-    updateCamera(false);
+    updateCamera(); // Camera logic now handles the switching inside
     
-    // We update controls inside updateCamera now, but doing it here is also fine/redundant
-    // controls.update(); 
-
     onChariotMove(chariotZPosition);
 
     if (Math.abs(chariotZPosition - targetZPosition) < 0.5) {
-      if (isTouring) {
-        if (targetZPosition < -1000) {
-          chariotZPosition = 5;
-          targetZPosition = 5;
-          currentStopIndex = 0;
-          isTouring = false;
-          isRunning = false;
-          setIsRunning(false);
-          updateChariotPosition();
-          updateCamera(true);
-        }
-      } else {
-        isRunning = false;
-        setIsRunning(false);
+      if (isLoopingBack) {
+        chariotZPosition = 0;
+        targetZPosition = 0;
+        isLoopingBack = false;
+        // Snap immediately so we don't see the coordinate jump
+        snapToCameraOffset(isRunning ? CHASE_OFFSET : HERO_OFFSET);
       }
+      
+      isRunning = false;
+      setIsRunning(false);
     }
 
     renderer.render(scene, camera);

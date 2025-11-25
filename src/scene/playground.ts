@@ -2,229 +2,181 @@ import * as THREE from 'three';
 import { placeOnGlobe } from './curvePlacement';
 
 export function createParks(scene: THREE.Scene) {
-  const parkPositions = [
-    { x: 20, z: -210 },
-    { x: -20, z: -215 },
-    { x: 21, z: -240 },
-    { x: -21, z: -245 },
+  // NEW POSITION: Z = -500
+  const parkZ = -500;
+
+  const positions = [
+    { x: 22, z: parkZ },
+    { x: -22, z: parkZ - 20 },
+    { x: 25, z: parkZ - 40 },
+    { x: -25, z: parkZ + 20 },
   ];
 
-  parkPositions.forEach((pos) => {
-    const parkGroup = new THREE.Group();
-    // Build the park contents relative to the group's center (0,0,0)
-    createParkContent(parkGroup);
+  positions.forEach((pos, i) => {
+    const group = new THREE.Group();
+    
+    // Green Patch Base
+    const grassGeo = new THREE.CylinderGeometry(15, 15, 0.5, 32);
+    const grassMat = new THREE.MeshStandardMaterial({ color: 0x4a9d6f, roughness: 0.9 });
+    const grass = new THREE.Mesh(grassGeo, grassMat);
+    grass.position.y = 0.25;
+    grass.receiveShadow = true;
+    group.add(grass);
 
-    // Place the entire group on the globe
-    placeOnGlobe(parkGroup, pos.x, pos.z, 0);
+    if (i % 2 === 0) {
+      createRealisticSwing(group, 0, 0);
+      createRoundabout(group, 6, 4);
+    } else {
+      createRealisticSlide(group, 0, 0);
+      createSeesaw(group, 5, 5);
+    }
 
-    // parkGroup.rotateY(Math.PI); // REMOVED: Causing reverse orientation
-    scene.add(parkGroup);
+    createBench(group, -8, 2);
+    placeOnGlobe(group, pos.x, pos.z, 0);
+    scene.add(group);
   });
 }
 
-function createParkContent(group: THREE.Group) {
-  const parkGrassGeo = new THREE.PlaneGeometry(15, 20);
-  const parkGrassMat = new THREE.MeshStandardMaterial({
-    color: 0x4a9d6f,
-    roughness: 0.8,
-  });
-  const parkGrass = new THREE.Mesh(parkGrassGeo, parkGrassMat);
-  parkGrass.rotation.x = -Math.PI / 2;
-  parkGrass.position.y = 0.05;
-  parkGrass.receiveShadow = true;
-  group.add(parkGrass);
+// ... Include createRealisticSwing, createRealisticSlide, etc. from previous code ...
+function createRealisticSwing(group: THREE.Group, x: number, z: number) {
+  const metal = new THREE.MeshStandardMaterial({ color: 0x336699, metalness: 0.6, roughness: 0.3 });
+  
+  // A-Frame Legs
+  const legGeo = new THREE.CylinderGeometry(0.1, 0.1, 4.5);
+  const topBarGeo = new THREE.CylinderGeometry(0.15, 0.15, 5);
 
-  // Add objects relative to the group center
-  createSwings(group, -4, -3);
-  createSlide(group, 3, -2);
-  createSeesaw(group, 0, 4);
-  createBench(group, -5, 6);
-  createBench(group, 5, 6);
-  createTrashCan(group, -6, -4);
-}
+  const swingGroup = new THREE.Group();
+  swingGroup.position.set(x, 0, z);
 
-function createSwings(group: THREE.Group, x: number, z: number) {
-  const swingFrameGeo = new THREE.CylinderGeometry(0.1, 0.1, 2.5, 8);
-  const metalMat = new THREE.MeshStandardMaterial({
-    color: 0x888888,
-    metalness: 0.8,
-    roughness: 0.2,
-  });
+  // Legs (Slanted)
+  const leg1 = new THREE.Mesh(legGeo, metal);
+  leg1.position.set(-2, 2, 1.5);
+  leg1.rotation.x = -0.3;
+  swingGroup.add(leg1);
 
-  const leftPole = new THREE.Mesh(swingFrameGeo, metalMat);
-  leftPole.position.set(x - 1.5, 1.25, z);
-  leftPole.castShadow = true;
-  group.add(leftPole);
+  const leg2 = new THREE.Mesh(legGeo, metal);
+  leg2.position.set(-2, 2, -1.5);
+  leg2.rotation.x = 0.3;
+  swingGroup.add(leg2);
 
-  const rightPole = new THREE.Mesh(swingFrameGeo, metalMat);
-  rightPole.position.set(x + 1.5, 1.25, z);
-  rightPole.castShadow = true;
-  group.add(rightPole);
+  const leg3 = new THREE.Mesh(legGeo, metal);
+  leg3.position.set(2, 2, 1.5);
+  leg3.rotation.x = -0.3;
+  swingGroup.add(leg3);
 
-  const topBarGeo = new THREE.CylinderGeometry(0.08, 0.08, 3.2, 8);
-  const topBar = new THREE.Mesh(topBarGeo, metalMat);
+  const leg4 = new THREE.Mesh(legGeo, metal);
+  leg4.position.set(2, 2, -1.5);
+  leg4.rotation.x = 0.3;
+  swingGroup.add(leg4);
+
+  // Top Bar
+  const topBar = new THREE.Mesh(topBarGeo, metal);
   topBar.rotation.z = Math.PI / 2;
-  topBar.position.set(x, 2.5, z);
-  topBar.castShadow = true;
-  group.add(topBar);
+  topBar.position.y = 4;
+  swingGroup.add(topBar);
 
-  for (let i = 0; i < 3; i++) {
-    const offsetX = -1.2 + i * 1.2;
-    createSingleSwing(group, x + offsetX, z);
-  }
-}
+  // Swings (Seats + Chains)
+  for(let i of [-1, 1]) {
+     const chainGeo = new THREE.CylinderGeometry(0.02, 0.02, 2.5);
+     const seatGeo = new THREE.BoxGeometry(0.6, 0.1, 0.4);
+     const seatMat = new THREE.MeshStandardMaterial({ color: 0xff6600 }); // Orange Seat
 
-function createSingleSwing(group: THREE.Group, x: number, z: number) {
-  const chainGeo = new THREE.CylinderGeometry(0.02, 0.02, 1.5, 6);
-  const metalMat = new THREE.MeshStandardMaterial({
-    color: 0x666666,
-    metalness: 0.8,
-    roughness: 0.3,
-  });
+     const sPos = i * 1.0;
+     
+     // Chains
+     const c1 = new THREE.Mesh(chainGeo, metal);
+     c1.position.set(sPos - 0.25, 2.7, 0);
+     swingGroup.add(c1);
+     const c2 = new THREE.Mesh(chainGeo, metal);
+     c2.position.set(sPos + 0.25, 2.7, 0);
+     swingGroup.add(c2);
 
-  const chain1 = new THREE.Mesh(chainGeo, metalMat);
-  chain1.position.set(x - 0.15, 1.75, z);
-  group.add(chain1);
-
-  const chain2 = new THREE.Mesh(chainGeo, metalMat);
-  chain2.position.set(x + 0.15, 1.75, z);
-  group.add(chain2);
-
-  const seatGeo = new THREE.BoxGeometry(0.4, 0.08, 0.35);
-  const seatMat = new THREE.MeshStandardMaterial({
-    color: 0xff6b35,
-    roughness: 0.7,
-  });
-  const seat = new THREE.Mesh(seatGeo, seatMat);
-  seat.position.set(x, 0.5, z);
-  seat.castShadow = true;
-  group.add(seat);
-}
-
-function createSlide(group: THREE.Group, x: number, z: number) {
-  const ladderGeo = new THREE.BoxGeometry(0.3, 1.8, 0.1);
-  const metalMat = new THREE.MeshStandardMaterial({
-    color: 0x888888,
-    metalness: 0.8,
-    roughness: 0.2,
-  });
-
-  const ladder = new THREE.Mesh(ladderGeo, metalMat);
-  ladder.position.set(x - 0.7, 0.9, z - 0.3);
-  ladder.castShadow = true;
-  group.add(ladder);
-
-  const rungGeo = new THREE.BoxGeometry(0.4, 0.08, 0.08);
-  for (let i = 0; i < 6; i++) {
-    const rung = new THREE.Mesh(rungGeo, metalMat);
-    rung.position.set(x - 0.7, 0.4 + i * 0.3, z - 0.3);
-    group.add(rung);
+     // Seat
+     const seat = new THREE.Mesh(seatGeo, seatMat);
+     seat.position.set(sPos, 1.5, 0);
+     swingGroup.add(seat);
   }
 
-  const slideGeo = new THREE.BoxGeometry(0.5, 0.1, 1.8);
-  const slideMat = new THREE.MeshStandardMaterial({
-    color: 0xffaa00,
-    roughness: 0.5,
-  });
-  const slide = new THREE.Mesh(slideGeo, slideMat);
-  slide.rotation.x = Math.PI / 3.5;
-  slide.position.set(x + 0.3, 1.2, z + 0.5);
-  slide.castShadow = true;
-  group.add(slide);
+  group.add(swingGroup);
+}
 
-  const platformGeo = new THREE.BoxGeometry(0.8, 0.1, 0.6);
-  const platform = new THREE.Mesh(platformGeo, metalMat);
-  platform.position.set(x - 0.7, 1.8, z - 0.3);
-  platform.castShadow = true;
-  group.add(platform);
+function createRealisticSlide(group: THREE.Group, x: number, z: number) {
+  const plasticRed = new THREE.MeshStandardMaterial({ color: 0xff3333, roughness: 0.2 });
+  const metal = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.5 });
+
+  const slideGroup = new THREE.Group();
+  slideGroup.position.set(x, 0, z);
+
+  // Ladder
+  const ladderGeo = new THREE.BoxGeometry(0.6, 3, 0.1);
+  const ladder = new THREE.Mesh(ladderGeo, metal);
+  ladder.position.set(0, 1.5, -1.5);
+  ladder.rotation.x = -0.2;
+  slideGroup.add(ladder);
+
+  // Platform
+  const platGeo = new THREE.BoxGeometry(1, 0.1, 1);
+  const plat = new THREE.Mesh(platGeo, metal);
+  plat.position.set(0, 2.9, -1);
+  slideGroup.add(plat);
+
+  // Slide Body (Simple Ramp for now, but smooth)
+  const rampGeo = new THREE.BoxGeometry(0.8, 0.1, 4);
+  const ramp = new THREE.Mesh(rampGeo, plasticRed);
+  ramp.position.set(0, 1.5, 1.2);
+  ramp.rotation.x = -0.6;
+  slideGroup.add(ramp);
+
+  // Sides
+  const sideGeo = new THREE.BoxGeometry(0.1, 0.3, 4);
+  const side1 = new THREE.Mesh(sideGeo, plasticRed);
+  side1.position.set(0.45, 1.6, 1.2);
+  side1.rotation.x = -0.6;
+  slideGroup.add(side1);
+  
+  const side2 = new THREE.Mesh(sideGeo, plasticRed);
+  side2.position.set(-0.45, 1.6, 1.2);
+  side2.rotation.x = -0.6;
+  slideGroup.add(side2);
+
+  group.add(slideGroup);
+}
+
+function createRoundabout(group: THREE.Group, x: number, z: number) {
+  const baseGeo = new THREE.CylinderGeometry(1.5, 1.5, 0.2, 16);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x3366cc });
+  const handleMat = new THREE.MeshStandardMaterial({ color: 0xdddddd });
+
+  const round = new THREE.Mesh(baseGeo, mat);
+  round.position.set(x, 0.4, z);
+  group.add(round);
+
+  const centerPost = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1), handleMat);
+  centerPost.position.set(x, 0.9, z);
+  group.add(centerPost);
+  
+  const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.05, 8, 16), handleMat);
+  wheel.rotation.x = Math.PI / 2;
+  wheel.position.set(x, 1.4, z);
+  group.add(wheel);
 }
 
 function createSeesaw(group: THREE.Group, x: number, z: number) {
-  const supportGeo = new THREE.CylinderGeometry(0.12, 0.15, 0.8, 8);
-  const metalMat = new THREE.MeshStandardMaterial({
-    color: 0x888888,
-    metalness: 0.8,
-    roughness: 0.2,
-  });
+  // Simple seesaw pivot
+  const pivot = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 0.6), new THREE.MeshStandardMaterial({color:0x555555}));
+  pivot.position.set(x, 0.3, z);
+  group.add(pivot);
 
-  const support = new THREE.Mesh(supportGeo, metalMat);
-  support.position.set(x, 0.4, z);
-  support.castShadow = true;
-  group.add(support);
-
-  const boardGeo = new THREE.BoxGeometry(0.4, 0.08, 2.5);
-  const boardMat = new THREE.MeshStandardMaterial({
-    color: 0xff6b35,
-    roughness: 0.7,
-  });
-  const board = new THREE.Mesh(boardGeo, boardMat);
-  board.position.set(x, 0.8, z);
-  board.castShadow = true;
-  board.receiveShadow = true;
+  const board = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 4), new THREE.MeshStandardMaterial({color:0xffd700}));
+  board.position.set(x, 0.6, z);
+  board.rotation.x = 0.2; // tilted
   group.add(board);
-
-  const handleGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.3, 6);
-  for (let offsetZ of [-1, 1]) {
-    const handle = new THREE.Mesh(handleGeo, metalMat);
-    handle.rotation.z = Math.PI / 2;
-    handle.position.set(x + 0.2, 1.0, z + offsetZ * 1.2);
-    group.add(handle);
-  }
 }
 
 function createBench(group: THREE.Group, x: number, z: number) {
-  const legGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.4, 6);
-  const metalMat = new THREE.MeshStandardMaterial({
-    color: 0x555555,
-    metalness: 0.6,
-    roughness: 0.4,
-  });
-
-  for (let offsetX of [-0.8, 0.8]) {
-    const leg = new THREE.Mesh(legGeo, metalMat);
-    leg.position.set(x + offsetX, 0.2, z);
-    leg.castShadow = true;
-    group.add(leg);
-  }
-
-  const seatGeo = new THREE.BoxGeometry(1.8, 0.1, 0.5);
-  const seatMat = new THREE.MeshStandardMaterial({
-    color: 0x8B4513,
-    roughness: 0.7,
-  });
-  const seat = new THREE.Mesh(seatGeo, seatMat);
-  seat.position.set(x, 0.4, z);
-  seat.castShadow = true;
-  seat.receiveShadow = true;
-  group.add(seat);
-
-  const backGeo = new THREE.BoxGeometry(1.8, 0.8, 0.1);
-  const back = new THREE.Mesh(backGeo, seatMat);
-  back.position.set(x, 0.7, z - 0.3);
-  back.castShadow = true;
-  group.add(back);
-}
-
-function createTrashCan(group: THREE.Group, x: number, z: number) {
-  const canGeo = new THREE.CylinderGeometry(0.25, 0.3, 0.7, 8);
-  const metalMat = new THREE.MeshStandardMaterial({
-    color: 0x333333,
-    metalness: 0.6,
-    roughness: 0.4,
-  });
-
-  const can = new THREE.Mesh(canGeo, metalMat);
-  can.position.set(x, 0.35, z);
-  can.castShadow = true;
-  group.add(can);
-
-  const lidGeo = new THREE.CylinderGeometry(0.27, 0.25, 0.08, 8);
-  const lidMat = new THREE.MeshStandardMaterial({
-    color: 0xff6b35,
-    roughness: 0.7,
-  });
-  const lid = new THREE.Mesh(lidGeo, lidMat);
-  lid.position.set(x, 0.73, z);
-  lid.castShadow = true;
-  group.add(lid);
+  const seatGeo = new THREE.BoxGeometry(1.5, 0.1, 0.5);
+  const wood = new THREE.MeshStandardMaterial({color: 0x8b4513});
+  const bench = new THREE.Mesh(seatGeo, wood);
+  bench.position.set(x, 0.5, z);
+  group.add(bench);
 }

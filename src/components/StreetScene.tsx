@@ -3,13 +3,10 @@ import { initScene } from '../scene/sceneSetup';
 import { Controls } from './Controls';
 import { Navbar } from './Navbar';
 
-// --- UPDATE THIS TYPE ---
-// Add the optional isTour boolean
 type SceneControls = {
   cleanup: () => void;
   goTo: (z: number, isTour?: boolean) => void;
 };
-// -----------------------
 
 export function StreetScene() {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -28,17 +25,20 @@ export function StreetScene() {
     const handleChariotMove = (z: number) => {
       const current = visibilityRef.current;
 
-      const shouldShowContact = z > -2 && z < 2;
+      // 1. Buildings/Contact (Around 0)
+      const shouldShowContact = z > -20 && z < 20;
       if (shouldShowContact !== current.showContact) {
         setShowContact(shouldShowContact);
       }
 
-      const shouldShowAbout = z > -155 && z < -140;
+      // 2. Temples/About (Around -250)
+      const shouldShowAbout = z > -270 && z < -230;
       if (shouldShowAbout !== current.showAbout) {
         setShowAbout(shouldShowAbout);
       }
 
-      const shouldShowProjects = z > -235 && z < -220;
+      // 3. Playground/Projects (Around -500)
+      const shouldShowProjects = z > -520 && z < -480;
       if (shouldShowProjects !== current.showProjects) {
         setShowProjects(shouldShowProjects);
       }
@@ -59,33 +59,30 @@ export function StreetScene() {
     visibilityRef.current = { showContact, showAbout, showProjects };
   }, [showContact, showAbout, showProjects]);
 
-  // --- UPDATE THIS HANDLER ---
   const handleNavClick = (section: string) => {
     if (!sceneRef.current) return;
     const { goTo } = sceneRef.current;
 
     switch (section) {
       case 'home':
-        goTo(5, false); // Pass false
+        goTo(0, false);
         break;
       case 'about':
-        goTo(-147, false); // Pass false
+        goTo(-250, false);
         break;
       case 'projects':
-        goTo(-227, false); // Pass false
+        goTo(-500, false);
         break;
       case 'contact':
-        goTo(0, false); // Pass false
+        goTo(0, false);
         break;
       case 'start':
-        // Full loop: Circumference is ~1256. Go to -1300 to ensure full circle.
-        goTo(-1300, true);
+        goTo(-760, true);
         break;
       default:
-        goTo(5, false); // Pass false
+        goTo(0, false);
     }
   };
-  // ---------------------------
 
   return (
     <div className="w-full h-full relative">
@@ -93,7 +90,7 @@ export function StreetScene() {
       <div ref={mountRef} className="w-full h-full" />
       <Controls isRunning={isRunning} />
 
-      {/* (All your text links stay exactly the same) */}
+      {/* TEXT OVERLAYS */}
       {showContact && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
           <a
