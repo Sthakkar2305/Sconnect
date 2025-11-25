@@ -78,7 +78,8 @@ export function StreetScene() {
         goTo(0, false); // Pass false
         break;
       case 'start':
-        goTo(-260, true); // Pass TRUE to start the tour!
+        // Full loop: Circumference is ~1256. Go to -1300 to ensure full circle.
+        goTo(-1300, true);
         break;
       default:
         goTo(5, false); // Pass false

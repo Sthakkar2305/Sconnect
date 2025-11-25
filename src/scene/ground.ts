@@ -1,46 +1,64 @@
 import * as THREE from 'three';
+import { GLOBE_RADIUS } from './curvePlacement';
 
 export function createGround(scene: THREE.Scene) {
-  // --- CHANGES ARE HERE ---
-  // 1. Set a much longer length for the scene
-  const groundLength = 400;
-
-  // 2. Calculate the center point for the long ground
-  // (Your scene goes from z=84 to z=-260, so the middle is ~-90)
-  const groundCenterZ = -90;
-  // -------------------------
+  // --- 1. THE GLOBE (Planet Surface) ---
+  const globeGeo = new THREE.SphereGeometry(GLOBE_RADIUS, 64, 64);
 
   const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x3a8c3a,
-    roughness: 0.8,
+    color: 0x3a5f3a, // Deep Greenish ground
+    roughness: 0.9
   });
-  // Use the new groundLength
-  const groundGeo = new THREE.PlaneGeometry(100, groundLength);
-  const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2;
-  // Set the new center position
-  ground.position.z = groundCenterZ;
-  ground.receiveShadow = true;
-  scene.add(ground);
+
+  const globe = new THREE.Mesh(globeGeo, groundMat);
+
+  // ROTATION: Rotate globe to match the Vertical "Y Pose"
+  globe.rotation.z = Math.PI / 2;
+
+  globe.receiveShadow = true;
+  scene.add(globe);
+
+  // --- 2. THE ROAD (Asphalt Ring) ---
+  const roadWidth = 14;
+  const phiLength = roadWidth / GLOBE_RADIUS;
+  const phiStart = (Math.PI / 2) - (phiLength / 2);
+
+  // Generate strip
+  const roadGeo = new THREE.SphereGeometry(
+    GLOBE_RADIUS + 0.1, // Slightly above ground
+    128, 8,             // High segments for smoothness
+    0, Math.PI * 2,     // Full circle length
+    phiStart, phiLength // Strip width
+  );
 
   const roadMat = new THREE.MeshStandardMaterial({
-    color: 0x444444,
-    roughness: 0.7,
+    color: 0x3a3a3a,
+    roughness: 0.8,
+    side: THREE.DoubleSide // Ensure visibility from all angles
   });
-  // Use the new groundLength
-  const roadGeo = new THREE.PlaneGeometry(10, groundLength);
+
   const road = new THREE.Mesh(roadGeo, roadMat);
-  road.rotation.x = -Math.PI / 2;
-  // Set the new center position
-  road.position.set(0, 0.02, groundCenterZ);
+
+  // ROTATION: Stand the road up vertically
+  road.rotation.z = Math.PI / 2;
+
   road.receiveShadow = true;
   scene.add(road);
 
-  const lineGeo = new THREE.PlaneGeometry(0.3, groundLength);
+  // --- 3. CENTER LINE (Yellow Dashed Strip) ---
+  const lineWidth = 0.3;
+  const linePhiLength = lineWidth / GLOBE_RADIUS;
+  const linePhiStart = (Math.PI / 2) - (linePhiLength / 2);
+
+  const lineGeo = new THREE.SphereGeometry(
+    GLOBE_RADIUS + 0.15, 128, 2, 0, Math.PI * 2, linePhiStart, linePhiLength
+  );
+
   const lineMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
   const centerLine = new THREE.Mesh(lineGeo, lineMat);
-  centerLine.rotation.x = -Math.PI / 2;
-  // Set the new center position
-  centerLine.position.set(0, 0.03, groundCenterZ);
+
+  // ROTATION: Stand the line up vertically
+  centerLine.rotation.z = Math.PI / 2;
+
   scene.add(centerLine);
 }
