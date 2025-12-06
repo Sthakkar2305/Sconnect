@@ -1,64 +1,60 @@
 import * as THREE from 'three';
 import { GLOBE_RADIUS } from './curvePlacement';
 
-export function createGround(scene: THREE.Scene) {
-  // --- 1. THE GLOBE (Planet Surface) ---
-  const globeGeo = new THREE.SphereGeometry(GLOBE_RADIUS, 64, 64);
+export function createGround(worldGroup: THREE.Group) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 1024; 
+  const ctx = canvas.getContext('2d');
+  
+  if (ctx) {
+    const h = 1024;
+    const w = 128;
+    
+    // 1. City Sector (0 - 1/3): Dark Asphalt
+    ctx.fillStyle = '#333333';
+    ctx.fillRect(0, 0, w, h/3);
+    
+    // 2. Temple Sector (1/3 - 2/3): Temple Parisar (Stone Paving)
+    const templeStart = h/3;
+    const templeHeight = h/3;
+    
+    ctx.fillStyle = '#8D6E63'; 
+    ctx.fillRect(0, templeStart, w, templeHeight);
+    
+    ctx.strokeStyle = '#6D4C41'; 
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for(let y = templeStart; y < templeStart + templeHeight; y += 32) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+    }
+    for(let x = 0; x < w; x += 32) {
+      ctx.moveTo(x, templeStart);
+      ctx.lineTo(x, templeStart + templeHeight);
+    }
+    ctx.stroke();
 
-  const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x3a5f3a, // Deep Greenish ground
-    roughness: 0.9
+    // 3. Airport Sector (2/3 - 1): Concrete Tarmac Color
+    ctx.fillStyle = '#44484C'; // Updated to match airport concrete
+    ctx.fillRect(0, (h/3)*2, w, h/3);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 16; 
+
+  const sphereGeo = new THREE.SphereGeometry(GLOBE_RADIUS, 64, 64);
+  const sphereMat = new THREE.MeshPhongMaterial({ 
+    map: tex,
+    shininess: 5,
+    flatShading: false
   });
 
-  const globe = new THREE.Mesh(globeGeo, groundMat);
-
-  // ROTATION: Rotate globe to match the Vertical "Y Pose"
-  globe.rotation.z = Math.PI / 2;
-
-  globe.receiveShadow = true;
-  scene.add(globe);
-
-  // --- 2. THE ROAD (Asphalt Ring) ---
-  const roadWidth = 14;
-  const phiLength = roadWidth / GLOBE_RADIUS;
-  const phiStart = (Math.PI / 2) - (phiLength / 2);
-
-  // Generate strip
-  const roadGeo = new THREE.SphereGeometry(
-    GLOBE_RADIUS + 0.1, // Slightly above ground
-    128, 8,             // High segments for smoothness
-    0, Math.PI * 2,     // Full circle length
-    phiStart, phiLength // Strip width
-  );
-
-  const roadMat = new THREE.MeshStandardMaterial({
-    color: 0x3a3a3a,
-    roughness: 0.8,
-    side: THREE.DoubleSide // Ensure visibility from all angles
-  });
-
-  const road = new THREE.Mesh(roadGeo, roadMat);
-
-  // ROTATION: Stand the road up vertically
-  road.rotation.z = Math.PI / 2;
-
-  road.receiveShadow = true;
-  scene.add(road);
-
-  // --- 3. CENTER LINE (Yellow Dashed Strip) ---
-  const lineWidth = 0.3;
-  const linePhiLength = lineWidth / GLOBE_RADIUS;
-  const linePhiStart = (Math.PI / 2) - (linePhiLength / 2);
-
-  const lineGeo = new THREE.SphereGeometry(
-    GLOBE_RADIUS + 0.15, 128, 2, 0, Math.PI * 2, linePhiStart, linePhiLength
-  );
-
-  const lineMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-  const centerLine = new THREE.Mesh(lineGeo, lineMat);
-
-  // ROTATION: Stand the line up vertically
-  centerLine.rotation.z = Math.PI / 2;
-
-  scene.add(centerLine);
+  const worldSphere = new THREE.Mesh(sphereGeo, sphereMat);
+  worldSphere.rotation.y = -Math.PI/2; 
+  worldSphere.rotation.z = Math.PI/2; 
+  
+  worldSphere.receiveShadow = true;
+  worldGroup.add(worldSphere);
 }

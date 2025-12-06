@@ -1,132 +1,349 @@
 import * as THREE from 'three';
-import { placeOnGlobe } from './curvePlacement';
+import { placeObjectOnWorld } from './curvePlacement';
 
-export function createTemples(scene: THREE.Scene) {
-  // NEW POSITION: Z = -250
-  const mainTempleZ = -250;
+// --- CONFIGURATION ---
+const TEMPLE_COLORS = {
+  stone: 0xe39e93,   // Pinkish sandstone
+  darkStone: 0x8c5e56, 
+  base: 0x5D4037,    
+  floor: 0x8D6E63,   
+  flag: 0xff0000,    
+  metal: 0x555555,
+  gold: 0xFFD700     // <--- ADDED MISSING COLOR
+};
 
-  const grandTemple = createRealisticTemple(1.2); 
-  placeOnGlobe(grandTemple, -20, mainTempleZ, 0);
-  grandTemple.rotateY(Math.PI / 4); 
-  scene.add(grandTemple);
+// Reusable materials
+const matStone = new THREE.MeshStandardMaterial({ color: TEMPLE_COLORS.stone, roughness: 0.7 });
+const matFlag = new THREE.MeshStandardMaterial({ color: TEMPLE_COLORS.flag, side: THREE.DoubleSide, emissive: 0x330000 });
+const matMetal = new THREE.MeshStandardMaterial({ color: TEMPLE_COLORS.metal });
 
-  const grandTemple2 = createRealisticTemple(1.2);
-  placeOnGlobe(grandTemple2, 20, mainTempleZ - 15, 0);
-  grandTemple2.rotateY(-Math.PI / 4);
-  scene.add(grandTemple2);
+export function createTempleSector(worldGroup: THREE.Group) {
+  const sectorStart = (Math.PI * 2) / 3;
+  const sectorEnd = (Math.PI * 4) / 3;
+  const sectorSize = sectorEnd - sectorStart;
 
-  // Fill area around
-  for (let i = 1; i <= 2; i++) {
-    const offset = i * 30;
-    const shrineL = createRealisticTemple(0.6);
-    placeOnGlobe(shrineL, -22, mainTempleZ - offset, 0);
-    scene.add(shrineL);
+  // 1. Entrance Gate (Torana)
+  createOrnateGate(worldGroup, sectorStart + 0.1);
 
-    const shrineR = createRealisticTemple(0.6);
-    placeOnGlobe(shrineR, 22, mainTempleZ + offset, 0);
-    scene.add(shrineR);
+  // 2. Street-Side Temples
+  const count = 8; 
+  for (let i = 0; i < count; i++) {
+    const angle = sectorStart + (i / count) * sectorSize + 0.2;
+    const offset = 18; 
+    
+    createStreetSideTemple(worldGroup, angle, -1, offset);
+    createStreetSideTemple(worldGroup, angle, 1, offset);
   }
+
+  // 3. Exit Gate
+  createOrnateGate(worldGroup, sectorEnd - 0.1);
 }
 
-// ... Copy the createRealisticTemple function from the previous response ...
-function createRealisticTemple(scale: number) {
+/**
+ * Places the detailed temple directly on the street side
+ */
+function createStreetSideTemple(worldGroup: THREE.Group, angle: number, side: number, dist: number) {
   const group = new THREE.Group();
-  group.scale.set(scale, scale, scale);
 
-  // Materials
-  const sandstone = new THREE.MeshStandardMaterial({ color: 0xd4a574, roughness: 0.9 });
-  const darkStone = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.9 });
-  const gold = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.6, roughness: 0.3 });
+  // 1. Foundation Plinth (Jagati)
+  const plinth = new THREE.Mesh(new THREE.BoxGeometry(10, 1.5, 12), matStone);
+  plinth.position.y = 0.75;
+  group.add(plinth);
 
-  // 1. BASE PLATFORM (Jagati)
-  const baseGeo = new THREE.BoxGeometry(15, 2, 25);
-  const base = new THREE.Mesh(baseGeo, sandstone);
-  base.position.y = 1;
-  base.castShadow = true;
-  base.receiveShadow = true;
-  group.add(base);
-
-  // Stairs
-  const stairGeo = new THREE.BoxGeometry(6, 1.5, 4);
-  const stairs = new THREE.Mesh(stairGeo, darkStone);
-  stairs.position.set(0, 0.75, 13.5); // Stick out front
+  // 2. Stairs
+  const stairs = new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 3), matStone);
+  stairs.position.set(0, 0.5, 6 + 1.5); 
+  stairs.rotation.x = 0.2; 
   group.add(stairs);
 
-  // 2. PILLARS HALL (Mandapa)
-  const pillarGeo = new THREE.CylinderGeometry(0.4, 0.4, 4, 8);
-  const mandapaRoofGeo = new THREE.ConeGeometry(5, 3, 4);
-  
-  // Place 4 corners of Mandapa
-  const mandapaZ = 5;
-  const positions = [
-    {x: -3, z: 8}, {x: 3, z: 8},
-    {x: -3, z: 2}, {x: 3, z: 2}
-  ];
+  // 3. Detailed Temple Mesh
+  const templeBody = createDetailedTempleMesh();
+  templeBody.position.y = 1.5; 
+  group.add(templeBody);
 
-  positions.forEach(pos => {
-    const p = new THREE.Mesh(pillarGeo, sandstone);
-    p.position.set(pos.x, 3, pos.z);
-    p.castShadow = true;
-    group.add(p);
-  });
+  // 4. Placement
+  placeObjectOnWorld(worldGroup, group, angle, side, dist);
+}
 
-  const mandapaRoof = new THREE.Mesh(mandapaRoofGeo, darkStone);
-  mandapaRoof.position.set(0, 6.5, 5);
-  mandapaRoof.rotation.y = Math.PI / 4; // Align square pyramid
-  mandapaRoof.castShadow = true;
-  group.add(mandapaRoof);
+/**
+ * Ported "createPillar" logic
+ */
+function createPillar(x: number, z: number, height: number): THREE.Group {
+    const group = new THREE.Group();
 
-  // 3. MAIN TOWER (Shikhara/Vimana) - The tall part
-  const towerBaseZ = -4;
-  
-  // Main body box
-  const sanctumGeo = new THREE.BoxGeometry(8, 6, 8);
-  const sanctum = new THREE.Mesh(sanctumGeo, sandstone);
-  sanctum.position.set(0, 4, towerBaseZ);
-  sanctum.castShadow = true;
-  group.add(sanctum);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.8), matStone);
+    base.position.y = 0.3;
+    group.add(base);
 
-  // Tapering Tower layers
-  let currentY = 7;
-  let currentSize = 7;
-  
-  for(let i=0; i<5; i++) {
-     const layerHeight = 2.5;
-     // Trapezoid-ish effect using Cylinder with different top/bottom radius
-     const layerGeo = new THREE.CylinderGeometry(currentSize - 1, currentSize, layerHeight, 4);
-     const layer = new THREE.Mesh(layerGeo, sandstone);
-     layer.position.set(0, currentY + layerHeight/2, towerBaseZ);
-     layer.rotation.y = Math.PI/4; // Square alignment
-     layer.castShadow = true;
-     group.add(layer);
+    const shaftPoints = [];
+    shaftPoints.push(new THREE.Vector2(0.3, 0));
+    shaftPoints.push(new THREE.Vector2(0.3, height - 1));
+    shaftPoints.push(new THREE.Vector2(0.35, height - 0.8));
+    shaftPoints.push(new THREE.Vector2(0.25, height - 0.6));
+    shaftPoints.push(new THREE.Vector2(0.35, height - 0.2)); 
+    
+    const shaftGeom = new THREE.LatheGeometry(shaftPoints, 16);
+    const shaft = new THREE.Mesh(shaftGeom, matStone);
+    shaft.position.y = 0.6;
+    shaft.castShadow = true;
+    group.add(shaft);
 
-     currentY += layerHeight;
-     currentSize -= 1.2;
-  }
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 0.7), matStone);
+    cap.position.y = height + 0.2;
+    group.add(cap);
 
-  // Amalaka (The ribbed disc on top)
-  const amalakaGeo = new THREE.TorusGeometry(1.5, 0.8, 16, 32);
-  const amalaka = new THREE.Mesh(amalakaGeo, darkStone);
-  amalaka.rotation.x = Math.PI / 2;
-  amalaka.position.set(0, currentY + 0.5, towerBaseZ);
-  group.add(amalaka);
+    group.position.set(x, 0, z);
+    return group;
+}
 
-  // Kalasha (Gold Pot Finial)
-  const kalashaGeo = new THREE.CylinderGeometry(0.1, 0.5, 1.5);
-  const kalasha = new THREE.Mesh(kalashaGeo, gold);
-  kalasha.position.set(0, currentY + 1.5, towerBaseZ);
-  group.add(kalasha);
+/**
+ * Ported "createMandapa" logic
+ */
+function createMandapa(): THREE.Group {
+    const group = new THREE.Group();
+    const width = 8; 
+    const depth = 8;
+    const pHeight = 3.5; 
 
-  // Flag
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3), gold);
-  pole.position.set(0, currentY + 3, towerBaseZ);
-  group.add(pole);
+    const baseHeight = 1.5;
+    const platform = new THREE.Mesh(new THREE.BoxGeometry(width + 2, baseHeight, depth + 2), matStone);
+    platform.position.y = baseHeight/2;
+    group.add(platform);
 
-  const flagGeo = new THREE.PlaneGeometry(1.5, 0.8);
-  const flagMat = new THREE.MeshBasicMaterial({ color: 0xff4500, side: THREE.DoubleSide });
-  const flag = new THREE.Mesh(flagGeo, flagMat);
-  flag.position.set(0.8, currentY + 3.5, towerBaseZ);
-  group.add(flag);
+    const spacing = 2.5;
+    const startX = -width/2 + 1;
+    const startZ = -depth/2 + 1;
+    
+    for(let x = startX; x < width/2; x += spacing) {
+        for(let z = startZ; z < depth/2; z += spacing) {
+            const pillar = createPillar(x, z, pHeight);
+            pillar.position.y = baseHeight;
+            group.add(pillar);
+        }
+    }
 
-  return group;
+    const roofY = baseHeight + pHeight + 0.4;
+    const roofSlab = new THREE.Mesh(new THREE.BoxGeometry(width + 1, 0.5, depth + 1), matStone);
+    roofSlab.position.y = roofY;
+    group.add(roofSlab);
+
+    const eaves = new THREE.Mesh(new THREE.BoxGeometry(width + 2, 0.2, depth + 2), matStone);
+    eaves.position.y = roofY - 0.2;
+    group.add(eaves);
+
+    let currentY = roofY + 0.25;
+    let currentSize = width;
+    const steps = 4;
+    const stepHeight = 0.8;
+    
+    for(let i=0; i<steps; i++) {
+        currentSize -= 1.5;
+        if(currentSize < 0.5) break;
+        
+        const stepBlock = new THREE.Mesh(new THREE.BoxGeometry(currentSize, stepHeight, currentSize), matStone);
+        stepBlock.position.y = currentY + stepHeight/2;
+        group.add(stepBlock);
+
+        const decorationCount = Math.floor(currentSize);
+        const knobGeo = new THREE.SphereGeometry(0.15, 8, 8);
+        for(let d=0; d<decorationCount; d++) {
+            const knob = new THREE.Mesh(knobGeo, matStone);
+            knob.position.set(-currentSize/2 + 0.5 + d, currentY + stepHeight/2, currentSize/2);
+            group.add(knob);
+        }
+        
+        currentY += stepHeight;
+    }
+
+    const finial = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.5, 1, 8), matStone);
+    finial.position.y = currentY + 0.5;
+    group.add(finial);
+
+    return group;
+}
+
+/**
+ * Ported "createShikhara" logic
+ */
+function createShikhara(): THREE.Group {
+    const group = new THREE.Group();
+    
+    const baseSize = 6;
+    const pHeight = 3.5;
+    const platformHeight = 1.5;
+    const towerHeight = 8; 
+
+    const platform = new THREE.Mesh(new THREE.BoxGeometry(baseSize + 2, platformHeight, baseSize + 2), matStone);
+    platform.position.y = platformHeight/2;
+    group.add(platform);
+
+    const sanctumSize = baseSize - 2; 
+    const sanctum = new THREE.Mesh(new THREE.BoxGeometry(sanctumSize, pHeight, sanctumSize), matStone);
+    sanctum.position.y = platformHeight + pHeight/2;
+    group.add(sanctum);
+
+    const cornerDist = baseSize/2 - 0.5;
+    const pillars = [
+        [cornerDist, cornerDist], [-cornerDist, cornerDist],
+        [cornerDist, -cornerDist], [-cornerDist, -cornerDist],
+        [0, cornerDist], [0, -cornerDist],
+        [cornerDist, 0], [-cornerDist, 0]
+    ];
+
+    pillars.forEach(([px, pz]) => {
+        const pillar = createPillar(px, pz, pHeight);
+        pillar.position.y = platformHeight;
+        group.add(pillar);
+    });
+
+    const roofY = platformHeight + pHeight + 0.4; 
+    const roofSlab = new THREE.Mesh(new THREE.BoxGeometry(baseSize + 1, 0.5, baseSize + 1), matStone);
+    roofSlab.position.y = roofY;
+    group.add(roofSlab);
+    
+    const eaves = new THREE.Mesh(new THREE.BoxGeometry(baseSize + 2, 0.2, baseSize + 2), matStone);
+    eaves.position.y = roofY - 0.2;
+    group.add(eaves);
+
+    let currentY = roofY + 0.25;
+    let currentSize = baseSize + 0.5;
+    
+    const stepHeight = 0.6; 
+    const steps = Math.floor(towerHeight / stepHeight);
+    const shrinkagePerStep = (currentSize - 1.5) / steps;
+
+    const knobGeo = new THREE.SphereGeometry(0.15, 8, 8);
+
+    for(let i=0; i<steps; i++) {
+        currentSize -= shrinkagePerStep;
+        
+        const stepBlock = new THREE.Mesh(new THREE.BoxGeometry(currentSize, stepHeight, currentSize), matStone);
+        stepBlock.position.y = currentY + stepHeight/2;
+        group.add(stepBlock);
+
+        if (currentSize > 2) {
+            const knobCount = Math.floor(currentSize / 1.5);
+            const spacing = currentSize / (knobCount + 1);
+            
+            for(let k=1; k<=knobCount; k++) {
+                const offset = -currentSize/2 + (k * spacing);
+                const k1 = new THREE.Mesh(knobGeo, matStone); k1.position.set(offset, currentY + stepHeight/2, currentSize/2); group.add(k1);
+                const k2 = new THREE.Mesh(knobGeo, matStone); k2.position.set(offset, currentY + stepHeight/2, -currentSize/2); group.add(k2);
+                const k3 = new THREE.Mesh(knobGeo, matStone); k3.position.set(-currentSize/2, currentY + stepHeight/2, offset); group.add(k3);
+                const k4 = new THREE.Mesh(knobGeo, matStone); k4.position.set(currentSize/2, currentY + stepHeight/2, offset); group.add(k4);
+            }
+        }
+        currentY += stepHeight;
+    }
+
+    const amalakaY = currentY;
+    const amalaka = new THREE.Mesh(new THREE.TorusGeometry( 1.5, 0.6, 16, 32 ), matStone);
+    amalaka.rotation.x = Math.PI / 2;
+    amalaka.scale.set(1, 1, 0.6); 
+    amalaka.position.y = amalakaY;
+    group.add(amalaka);
+
+    const kalashaPoints = [];
+    kalashaPoints.push(new THREE.Vector2(0,0));
+    kalashaPoints.push(new THREE.Vector2(0.5, 0.2));
+    kalashaPoints.push(new THREE.Vector2(0.8, 0.5));
+    kalashaPoints.push(new THREE.Vector2(0.2, 1.2));
+    kalashaPoints.push(new THREE.Vector2(0.3, 1.4));
+    kalashaPoints.push(new THREE.Vector2(0, 1.8));
+    
+    const kalashaGeom = new THREE.LatheGeometry(kalashaPoints, 16);
+    const kalasha = new THREE.Mesh(kalashaGeom, matStone);
+    kalasha.position.y = amalakaY + 0.5;
+    group.add(kalasha);
+
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.5), matMetal);
+    pole.position.y = amalakaY + 2.0; 
+    group.add(pole);
+
+    const flagShape = new THREE.Shape();
+    flagShape.moveTo(0, 0);
+    flagShape.lineTo(2.2, 0.6); 
+    flagShape.lineTo(0, 1.5); 
+    flagShape.lineTo(0, 0); 
+    
+    const flag = new THREE.Mesh(new THREE.ShapeGeometry(flagShape), matFlag);
+    flag.position.set(0, amalakaY + 3.0, 0);
+    flag.rotation.y = -Math.PI / 4; 
+    group.add(flag);
+
+    return group;
+}
+
+function createDetailedTempleMesh(): THREE.Group {
+    const templeGroup = new THREE.Group();
+    const mandapa = createMandapa();
+    mandapa.position.z = 4; 
+    templeGroup.add(mandapa);
+
+    const shikhara = createShikhara();
+    shikhara.position.z = -5; 
+    templeGroup.add(shikhara);
+
+    const connector = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 3), matStone);
+    connector.position.set(0, 3.5, -0.5);
+    templeGroup.add(connector);
+
+    return templeGroup;
+}
+
+function createOrnateGate(worldGroup: THREE.Group, angle: number) {
+  const group = new THREE.Group();
+  const mat = matStone;
+
+  const pillarGeo = new THREE.BoxGeometry(2.5, 9, 2.5);
+  const leftP = new THREE.Mesh(pillarGeo, mat); leftP.position.set(-9, 4.5, 0); group.add(leftP);
+  const rightP = new THREE.Mesh(pillarGeo, mat); rightP.position.set(9, 4.5, 0); group.add(rightP);
+
+  const curveShape = new THREE.Shape();
+  curveShape.moveTo(-11, 0); curveShape.lineTo(11, 0); curveShape.lineTo(11, 2);
+  curveShape.quadraticCurveTo(0, 5, -11, 2); curveShape.lineTo(-11, 0);
+
+  const archGeo = new THREE.ExtrudeGeometry(curveShape, { depth: 3, bevelEnabled: true, bevelSize: 0.2, bevelThickness: 0.2 });
+  const arch = new THREE.Mesh(archGeo, mat);
+  arch.position.set(0, 8.5, -1.5);
+  group.add(arch);
+
+  const k1 = createKalashGeometry(); k1.position.set(0, 12.5, 0); k1.scale.set(1.5,1.5,1.5); group.add(k1);
+
+  // Flags on Gate Pillars
+  const flagL = createGateFlag(); flagL.position.set(-9, 9, 0); group.add(flagL);
+  const flagR = createGateFlag(); flagR.position.set(9, 9, 0); group.add(flagR);
+
+  placeObjectOnWorld(worldGroup, group, angle, 0, 0);
+}
+
+function createGateFlag(): THREE.Group {
+    const g = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 4), matMetal);
+    pole.position.y = 2; g.add(pole);
+
+    const flagShape = new THREE.Shape();
+    flagShape.moveTo(0, 0); flagShape.lineTo(2.5, 0.8); flagShape.lineTo(0, 1.6); flagShape.lineTo(0, 0); 
+    const flag = new THREE.Mesh(new THREE.ShapeGeometry(flagShape), matFlag);
+    flag.position.set(0, 3.8, 0); flag.rotation.y = -Math.PI / 2; g.add(flag);
+    return g;
+}
+
+function createKalashGeometry(): THREE.Group {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: TEMPLE_COLORS.gold, metalness: 0.8, roughness: 0.2 });
+    const pot = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), mat); g.add(pot);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.25, 0.5), mat); neck.position.y = 0.4; g.add(neck);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.05, 8, 16), mat); rim.rotation.x = Math.PI/2; rim.position.y = 0.65; g.add(rim);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.4, 8), mat); tip.position.y = 0.8; g.add(tip);
+    
+    // Tiny flag on top of Kalash
+    const flagGeo = new THREE.BufferGeometry();
+    const vertices = new Float32Array([0, 0, 0, 1.2, 0.4, 0, 0, 0.8, 0]);
+    flagGeo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+    flagGeo.computeVertexNormals();
+    const flag = new THREE.Mesh(flagGeo, new THREE.MeshStandardMaterial({ color: TEMPLE_COLORS.flag, side: THREE.DoubleSide }));
+    flag.position.set(0, 0.8, 0); g.add(flag);
+
+    return g;
 }

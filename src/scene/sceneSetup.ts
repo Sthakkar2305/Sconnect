@@ -1,197 +1,129 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { createGround } from './ground';
-import { createBuildings } from './buildings';
-import { createTemples } from './temples';
-import { createTrees } from './trees';
-import { createParks } from './playground';
-import { createChariot } from './chariot';
-import { placeOnGlobe, getGlobePosition, GLOBE_RADIUS } from './curvePlacement';
+import { createCitySector } from './buildings';
+import { createTempleSector } from './temples';
+import { createBeachSector } from './playground'; // Generates Airport geometry
+import { createPlayerMachine } from './chariot';
+import { GLOBE_RADIUS } from './curvePlacement';
+
+const SECTOR_CONFIG = {
+  city: { fog: 0xffde00 },
+  temple: { fog: 0xFFE0B2 },
+  airport: { fog: 0x87CEEB }
+};
 
 export function initScene(
   container: HTMLDivElement,
-  setIsRunning: (running: boolean) => void,
-  onChariotMove: (z: number) => void
+  onVibeChange: (vibe: string) => void,
+  onMachineClick: () => void
 ) {
-  let scene: THREE.Scene;
-  let camera: THREE.PerspectiveCamera;
-  let renderer: THREE.WebGLRenderer;
-  let controls: OrbitControls;
-  let horseAndChariot: THREE.Group;
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(SECTOR_CONFIG.city.fog);
+  scene.fog = new THREE.Fog(SECTOR_CONFIG.city.fog, 25, 70);
 
-  // --- LOGIC VARIABLES ---
-  let chariotZPosition = 0; 
-  let targetZPosition = 0;
-  let chariotSpeed = 0;
+  const camera = new THREE.PerspectiveCamera(100, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(0, GLOBE_RADIUS + 6, 20);
+  camera.lookAt(0, GLOBE_RADIUS - 5, -60);
 
-  // Stops
-  const STOPS = [0, -250, -500];
-  let currentStopIndex = 0;
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  container.appendChild(renderer.domElement);
 
-  // Speed Settings
-  const maxSpeed = 1.5;
-  const acceleration = 0.08;
-  const deceleration = 0.08;
-  const tourMaxSpeed = 2.4; 
-  const tourAcceleration = 0.1;
-  const tourDeceleration = 0.1;
+  // Lights
+  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  sunLight.position.set(50, 100, 50);
+  sunLight.castShadow = true;
+  scene.add(sunLight);
+
+  // Groups
+  const worldGroup = new THREE.Group();
+  scene.add(worldGroup);
+
+  // --- BUILD WORLD ---
+  createGround(worldGroup); // FIXED: Removed 'scene' parameter
+  createCitySector(worldGroup);
+  createTempleSector(worldGroup);
+  createBeachSector(worldGroup); // Generates Airport geometry
   
-  const RATH_HEIGHT = 0.3;
+  // --- 3D TEXT LABELS ---
+  generate3DText(worldGroup, "WELCOME", (Math.PI*2)/3 / 2, "TEXT_WELCOME"); 
+  generate3DText(worldGroup, "BOOK DEMO", Math.PI, "LINK_BOOK_DEMO"); 
+  generate3DText(worldGroup, "CONTACT US", (Math.PI*5)/3, "LINK_CONTACT"); 
 
-  // --- CAMERA CONFIGURATION ---
-  
-  // 1. HERO VIEW (Stopped): Close, low, focused on screen
-  const HERO_OFFSET = new THREE.Vector3(0, 3, 12);
-  
-  // 2. CHASE VIEW (Running): High, far back, wide view of environment
-  const CHASE_OFFSET = new THREE.Vector3(0, 10, 24);
+  // --- CARS ---
+  const cars = generateCityCars(worldGroup);
+  const carClock = new THREE.Clock();
 
+  // Player Machine
+  const { machineScreenMat } = createPlayerMachine(scene);
+
+  // --- LOGIC ---
+  let scrollPos = 0;
+  let targetScrollPos = 0;
   let animationFrameId: number;
-  let isRunning = false;
-  let isTouring = false;
-  let isLoopingBack = false;
 
-  function goTo(z: number, isTour: boolean = false) {
-    targetZPosition = z;
-    isRunning = true;
-    setIsRunning(true);
-    isTouring = isTour;
-    isLoopingBack = false;
-  }
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
 
-  function init() {
-    scene = new THREE.Scene();
+  const interactableNames = ['TV_SCREEN_FRONT', 'UPLOAD_BUTTON', 'LINK_BOOK_DEMO', 'LINK_CONTACT'];
 
-    const skyColor = 0xFFEA00;
-    scene.background = new THREE.Color(skyColor);
-    // Increased fog distance slightly so we can see further while running
-    scene.fog = new THREE.Fog(skyColor, 80, 300);
+  // Scroll Handling
+  let touchStartY = 0;
+  const onTouchStart = (e: TouchEvent) => { touchStartY = e.touches[0].clientY; };
+  const onTouchMove = (e: TouchEvent) => {
+    targetScrollPos += (touchStartY - e.touches[0].clientY) * 0.005;
+    touchStartY = e.touches[0].clientY;
+  };
+  const onWheel = (e: WheelEvent) => {
+    targetScrollPos += e.deltaY * 0.002;
+    e.preventDefault();
+  };
 
-    renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    container.appendChild(renderer.domElement);
+  // Click Handler
+  const onClick = (e: MouseEvent) => {
+     mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+     mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+     raycaster.setFromCamera(mouse, camera);
+     
+     const intersects = raycaster.intersectObjects(scene.children, true);
+     const hit = intersects.find(i => interactableNames.includes(i.object.name));
 
-    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.up.set(1, 0, 0); 
+     if(hit) {
+        switch(hit.object.name) {
+            case 'TV_SCREEN_FRONT':
+            case 'UPLOAD_BUTTON':
+                onMachineClick();
+                break;
+            case 'LINK_BOOK_DEMO':
+                window.location.href = '/book-demo'; 
+                break;
+            case 'LINK_CONTACT':
+                window.location.href = 'tel:+918758649149';
+                break;
+        }
+     }
+  };
 
-    controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.maxDistance = 500;
-    controls.enablePan = true; 
+  // Hover Handler
+  const onMouseMove = (e: MouseEvent) => {
+     mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+     mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+     raycaster.setFromCamera(mouse, camera);
+     const intersects = raycaster.intersectObjects(scene.children, true);
+     const isHovering = intersects.some(i => interactableNames.includes(i.object.name));
+     
+     document.body.style.cursor = isHovering ? 'pointer' : 'default';
+  };
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
-
-    const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    sunLight.position.set(100, 100, 50);
-    sunLight.castShadow = true;
-    scene.add(sunLight);
-
-    // World Generation
-    createGround(scene);
-    createBuildings(scene); 
-    createTemples(scene);
-    createParks(scene);
-    createTrees(scene);
-
-    const chariotCtrl = createChariot(scene);
-    horseAndChariot = chariotCtrl.mesh;
-    scene.add(horseAndChariot);
-
-    // Initial Setup
-    updateChariotPosition();
-    
-    // Force snap to Hero View initially (since we are stopped)
-    snapToCameraOffset(HERO_OFFSET);
-
-    window.addEventListener('resize', onWindowResize, false);
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-
-    animate();
-  }
-
-  // Helper: Instantly snap camera to a specific offset (used on load/reset)
-  function snapToCameraOffset(offsetVec: THREE.Vector3) {
-    if (!horseAndChariot) return;
-    const worldOffset = offsetVec.clone().applyQuaternion(horseAndChariot.quaternion);
-    const idealPosition = horseAndChariot.position.clone().add(worldOffset);
-    
-    camera.position.copy(idealPosition);
-    camera.up.copy(horseAndChariot.position.clone().normalize());
-    camera.lookAt(horseAndChariot.position);
-    controls.target.copy(horseAndChariot.position);
-    controls.update();
-  }
-
-  function updateChariotPosition() {
-    if (!horseAndChariot) return;
-    
-    const { position } = getGlobePosition(0, chariotZPosition, RATH_HEIGHT);
-    horseAndChariot.position.copy(position);
-    horseAndChariot.up.copy(position).normalize();
-    
-    const moveDir = targetZPosition < chariotZPosition ? -1 : 1;
-    const lookAheadPos = getGlobePosition(0, chariotZPosition + moveDir * 1, RATH_HEIGHT).position;
-    
-    horseAndChariot.lookAt(lookAheadPos);
-    horseAndChariot.rotateY(Math.PI); 
-  }
-
-  function updateCamera() {
-    if (!horseAndChariot) return;
-
-    // DECIDE TARGET OFFSET
-    // If running, we use CHASE_OFFSET (High/Wide)
-    // If stopped, we use HERO_OFFSET (Low/Close)
-    const targetOffset = isRunning ? CHASE_OFFSET : HERO_OFFSET;
-
-    // Calculate World Position
-    const worldOffset = targetOffset.clone().applyQuaternion(horseAndChariot.quaternion);
-    const idealPosition = horseAndChariot.position.clone().add(worldOffset);
-
-    // Smooth Interpolation
-    // We use a slightly faster lerp (0.05) when running to keep up, 
-    // and a slower one (0.03) when stopping for a smooth landing.
-    const alpha = isRunning ? 0.05 : 0.03;
-    camera.position.lerp(idealPosition, alpha);
-    
-    // Smooth Up Vector
-    const globeNormal = horseAndChariot.position.clone().normalize();
-    const currentUp = camera.up.clone();
-    currentUp.lerp(globeNormal, 0.1);
-    camera.up.copy(currentUp);
-
-    // Always look at Chariot
-    controls.target.lerp(horseAndChariot.position, 0.1);
-    controls.update();
-  }
-
-  function onKeyDown(event: KeyboardEvent) {
-    if (event.key === 'ArrowUp' || event.key === 'w' || event.key === 'W') {
-      if (currentStopIndex < STOPS.length - 1) {
-        currentStopIndex++;
-        goTo(STOPS[currentStopIndex], false);
-      } else {
-        currentStopIndex = 0; 
-        targetZPosition = -754; 
-        isRunning = true;
-        setIsRunning(true);
-        isLoopingBack = true; 
-      }
-    }
-    if (event.key === 'ArrowDown' || event.key === 's' || event.key === 'S') {
-      if (currentStopIndex > 0) {
-        currentStopIndex--;
-        goTo(STOPS[currentStopIndex], false);
-      }
-    }
-  }
-
-  function onKeyUp(event: KeyboardEvent) {}
+  window.addEventListener('wheel', onWheel, { passive: false });
+  window.addEventListener('touchstart', onTouchStart);
+  window.addEventListener('touchmove', onTouchMove);
+  window.addEventListener('click', onClick);
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('resize', onWindowResize);
 
   function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -202,56 +134,130 @@ export function initScene(
   function animate() {
     animationFrameId = requestAnimationFrame(animate);
 
-    const currentMaxSpeed = isTouring ? tourMaxSpeed : maxSpeed;
-    const currentAcceleration = isTouring ? tourAcceleration : acceleration;
-    const currentDeceleration = isTouring ? tourDeceleration : deceleration;
+    scrollPos += (targetScrollPos - scrollPos) * 0.1;
+    worldGroup.rotation.x = scrollPos;
 
-    if (isRunning && Math.abs(chariotZPosition - targetZPosition) > 0.5) {
-      chariotSpeed = Math.min(chariotSpeed + currentAcceleration, currentMaxSpeed);
-    } else {
-      chariotSpeed = Math.max(chariotSpeed - currentDeceleration, 0);
-    }
-
-    if (chariotZPosition > targetZPosition) {
-      chariotZPosition -= chariotSpeed;
-      if (chariotZPosition < targetZPosition) chariotZPosition = targetZPosition;
-    } else if (chariotZPosition < targetZPosition) {
-      chariotZPosition += chariotSpeed;
-      if (chariotZPosition > targetZPosition) chariotZPosition = targetZPosition;
-    }
-
-    updateChariotPosition();
-    updateCamera(); // Camera logic now handles the switching inside
+    // Vibe Calculation
+    let normRot = scrollPos % (Math.PI * 2);
+    if(normRot < 0) normRot += Math.PI * 2;
     
-    onChariotMove(chariotZPosition);
+    let currentVibe = "City";
+    let targetHex = SECTOR_CONFIG.city.fog;
 
-    if (Math.abs(chariotZPosition - targetZPosition) < 0.5) {
-      if (isLoopingBack) {
-        chariotZPosition = 0;
-        targetZPosition = 0;
-        isLoopingBack = false;
-        // Snap immediately so we don't see the coordinate jump
-        snapToCameraOffset(isRunning ? CHASE_OFFSET : HERO_OFFSET);
-      }
-      
-      isRunning = false;
-      setIsRunning(false);
+    if (normRot >= (Math.PI*2)/3 && normRot < (Math.PI*4)/3) {
+        currentVibe = "Temple"; targetHex = SECTOR_CONFIG.temple.fog;
+    } else if (normRot >= (Math.PI*4)/3) {
+        currentVibe = "Airport"; targetHex = SECTOR_CONFIG.airport.fog;
     }
+    
+    onVibeChange(currentVibe);
+    
+    // Smooth Background Transition
+    const targetColor = new THREE.Color(targetHex);
+    (scene.background as THREE.Color).lerp(targetColor, 0.05);
+    scene.fog!.color.lerp(targetColor, 0.05);
+
+    // Car Animation
+    const delta = carClock.getDelta();
+    const cityEndAngle = (Math.PI * 2) / 3;
+
+    cars.forEach(car => {
+        car.angle += car.speed * delta;
+        if (car.angle > cityEndAngle) {
+            car.angle = 0;
+        }
+        car.pivot.rotation.x = -car.angle;
+    });
 
     renderer.render(scene, camera);
   }
 
-  init();
+  animate();
 
   return {
     cleanup: () => {
       cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('click', onClick);
+      window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('resize', onWindowResize);
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
       container.removeChild(renderer.domElement);
       renderer.dispose();
     },
-    goTo: goTo,
+    updateScreen: (texture: THREE.Texture) => {
+        if(machineScreenMat) {
+            machineScreenMat.map = texture;
+            machineScreenMat.needsUpdate = true;
+        }
+    }
   };
+}
+
+function generate3DText(worldGroup: THREE.Group, textStr: string, angle: number, name: string) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024; canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    if(ctx) {
+        ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.font = '900 120px "Segoe UI", sans-serif';
+        ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.shadowColor = "rgba(0,0,0,0.5)";
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = 'black'; ctx.lineWidth = 4;
+        
+        ctx.strokeText(textStr, canvas.width/2, canvas.height/2);
+        ctx.fillText(textStr, canvas.width/2, canvas.height/2);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(30, 15), new THREE.MeshBasicMaterial({map: tex, transparent:true, side: THREE.DoubleSide}));
+    
+    mesh.name = name; 
+    mesh.position.y = GLOBE_RADIUS + 12;
+    
+    const pivot = new THREE.Object3D(); 
+    pivot.rotation.x = -angle; 
+    pivot.add(mesh);
+    worldGroup.add(pivot);
+}
+
+function generateCityCars(worldGroup: THREE.Group) {
+    const cars: any[] = [];
+    const carCount = 8;
+    const COLORS = [0xE74C3C, 0xE67E22, 0xF1C40F, 0x3498DB];
+    const citySectorEnd = (Math.PI * 2) / 3;
+
+    for(let i=0; i<carCount; i++) {
+        const angle = (i/carCount) * citySectorEnd;
+        const side = i % 2 === 0 ? 1 : -1;
+        const speed = 0.1 + Math.random() * 0.1; 
+        
+        const carGroup = new THREE.Group();
+        const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+        
+        const body = new THREE.Mesh(new THREE.BoxGeometry(4.7, 0.75, 1.95), new THREE.MeshStandardMaterial({color}));
+        body.position.y = 0.55; carGroup.add(body);
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.6, 1.6), new THREE.MeshStandardMaterial({color: 0x111111}));
+        cabin.position.set(-0.2, 1.25, 0); carGroup.add(cabin);
+        
+        const wMat = new THREE.MeshStandardMaterial({color: 0x222222});
+        [[1.3, 0.9], [1.3, -0.9], [-1.3, 0.9], [-1.3, -0.9]].forEach(pos => {
+            const w = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.3).rotateX(Math.PI/2), wMat);
+            w.position.set(pos[0], 0.35, pos[1]);
+            carGroup.add(w);
+        });
+
+        const pivot = new THREE.Object3D();
+        const offsetAngle = (8.0 / GLOBE_RADIUS) * side;
+        carGroup.position.y = GLOBE_RADIUS + 0.15;
+        carGroup.rotation.y = Math.PI / 2;
+        
+        pivot.add(carGroup);
+        pivot.rotation.x = -angle;
+        pivot.rotation.z = offsetAngle;
+        worldGroup.add(pivot);
+        cars.push({ pivot, angle, speed, side });
+    }
+    return cars;
 }
