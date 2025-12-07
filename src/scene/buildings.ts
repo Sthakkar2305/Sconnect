@@ -6,20 +6,38 @@ const COLORS = [
   0xE59866, 0x1ABC9C, 0xD35400, 0x95A5A6
 ];
 
+// --- NEW FUNCTION: Generates Road Lines for the WHOLE world ---
+export function createGlobalRoadMarkings(worldGroup: THREE.Group) {
+    const totalDashes = 150; // Increased count for full circle
+    const fullCircle = Math.PI * 2;
+
+    for(let i = 0; i < totalDashes; i++) {
+        const angle = (i / totalDashes) * fullCircle;
+        
+        // Center double line (Yellow)
+        createRoadDash(worldGroup, angle, -0.5, 0xFFD700); // Inner Left
+        createRoadDash(worldGroup, angle, 0.5, 0xFFD700);  // Inner Right
+
+        // Lane dividers (White) - Outer lanes
+        createRoadDash(worldGroup, angle, -7, 0xFFFFFF);
+        createRoadDash(worldGroup, angle, 7, 0xFFFFFF);
+    }
+}
+
 export function createCitySector(worldGroup: THREE.Group) {
   const sectorStart = 0;
   const sectorEnd = (Math.PI * 2) / 3;
   const sectorSize = sectorEnd - sectorStart;
   
-  // Road Markings
-  createCityRoadMarkings(worldGroup, sectorStart, sectorEnd);
+  // NOTE: Road markings moved to createGlobalRoadMarkings above.
 
   // Houses
   const count = 12;
   for (let i = 0; i < count; i++) {
     const angle = sectorStart + (i / count) * sectorSize + 0.1;
-    createDetailedHouse(worldGroup, angle, -1);
-    createDetailedHouse(worldGroup, angle, 1);
+    // Offset buildings further out (22) so the road feels wide
+    createDetailedHouse(worldGroup, angle, -1, 22);
+    createDetailedHouse(worldGroup, angle, 1, 22);
   }
 
   // Traffic Signals
@@ -30,23 +48,20 @@ export function createCitySector(worldGroup: THREE.Group) {
   generateCityClouds(worldGroup, sectorStart, sectorEnd);
 }
 
-function createCityRoadMarkings(worldGroup: THREE.Group, startAngle: number, endAngle: number) {
-  const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 32;
-  const ctx = canvas.getContext('2d');
-  if(ctx) { ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.fillRect(0,0,64,32); ctx.fillStyle = '#ffffff'; ctx.fillRect(16, 0, 32, 32); }
-  const texture = new THREE.CanvasTexture(canvas); texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.ClampToEdgeWrapping; texture.repeat.set(20, 1);
-  const lineMat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
-  
-  [-5.0, 5.0].forEach(xPos => {
-      const radius = Math.sqrt(Math.pow(GLOBE_RADIUS, 2) - Math.pow(xPos, 2)) + 0.05;
-      const geo = new THREE.TorusGeometry(radius, 0.2, 16, 100, endAngle - startAngle);
-      const mesh = new THREE.Mesh(geo, lineMat);
-      mesh.rotation.y = Math.PI / 2; mesh.position.x = xPos; mesh.rotation.z = startAngle + Math.PI/2;
-      worldGroup.add(mesh);
-  });
+// Helper to place a single dash
+function createRoadDash(worldGroup: THREE.Group, angle: number, xOffset: number, color: number) {
+    const dashGeo = new THREE.BoxGeometry(2.0, 0.1, 0.3); // Longer dashes
+    const dashMat = new THREE.MeshBasicMaterial({ color: color }); 
+    const mesh = new THREE.Mesh(dashGeo, dashMat);
+
+    const side = xOffset >= 0 ? 1 : -1;
+    const dist = Math.abs(xOffset);
+
+    // Place slightly above the ground radius so it doesn't z-fight with asphalt
+    placeObjectOnWorld(worldGroup, mesh, angle, side, dist, GLOBE_RADIUS + 0.08);
 }
 
-function createDetailedHouse(worldGroup: THREE.Group, angle: number, side: number) {
+function createDetailedHouse(worldGroup: THREE.Group, angle: number, side: number, dist: number = 19) {
   const color = COLORS[Math.floor(Math.random() * COLORS.length)];
   const width = 6; 
   const depth = 7; 
@@ -54,33 +69,13 @@ function createDetailedHouse(worldGroup: THREE.Group, angle: number, side: numbe
   
   const houseGroup = new THREE.Group();
   
-  // --- 1. Procedural Facade Shape ---
+  // 1. Facade
   const shape = new THREE.Shape();
-  const gableType = Math.floor(Math.random() * 4);
   const peakH = 3;
-  
   shape.moveTo(width, 0);
-  
-  if (gableType === 0) {
-      // Stepped Gable
-      shape.lineTo(width, height); shape.lineTo(width - 1, height); shape.lineTo(width - 1, height + 1);
-      shape.lineTo(width - 2, height + 1); shape.lineTo(width - 2, height + 2); shape.lineTo(width - 3, height + 2);
-      shape.lineTo(width - 3, height + 3); shape.lineTo(3, height + 3); shape.lineTo(3, height + 2);
-      shape.lineTo(2, height + 2); shape.lineTo(2, height + 1); shape.lineTo(1, height + 1);
-      shape.lineTo(1, height); shape.lineTo(0, height);
-  } else if (gableType === 1) {
-      // Curved Gable
-      shape.lineTo(width, height); shape.bezierCurveTo(width, height + 1.5, width/2 + 1, height + peakH, width/2, height + peakH);
-      shape.bezierCurveTo(width/2 - 1, height + peakH, 0, height + 1.5, 0, height);
-  } else if (gableType === 2) {
-      // Pointed Step Gable
-      shape.lineTo(width, height); shape.lineTo(width - 1, height); shape.lineTo(width - 1, height + 1);
-      shape.lineTo(width - 1.5, height + 1); shape.lineTo(width - 1.5, height + peakH); shape.lineTo(1.5, height + peakH);
-      shape.lineTo(1.5, height + 1); shape.lineTo(1, height + 1); shape.lineTo(1, height); shape.lineTo(0, height);
-  } else {
-      // Standard Triangular Gable
-      shape.lineTo(width, height); shape.lineTo(width/2, height + peakH); shape.lineTo(0, height);
-  }
+  shape.lineTo(width, height); 
+  shape.lineTo(width/2, height + peakH); 
+  shape.lineTo(0, height);
   shape.lineTo(0, 0);
 
   const facade = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, {depth:0.3, bevelEnabled:false}), new THREE.MeshLambertMaterial({color}));
@@ -88,7 +83,7 @@ function createDetailedHouse(worldGroup: THREE.Group, angle: number, side: numbe
   facade.castShadow = true; 
   houseGroup.add(facade);
 
-  // --- 2. Decorative Bands ---
+  // 2. Bands
   const bandGeo = new THREE.BoxGeometry(width, 0.25, 0.4);
   const trimMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
   for(let y = 3; y < height; y += 3) { 
@@ -97,7 +92,7 @@ function createDetailedHouse(worldGroup: THREE.Group, angle: number, side: numbe
       houseGroup.add(band); 
   }
 
-  // --- 3. Windows ---
+  // 3. Windows
   const winRows = Math.floor((height - 2) / 3.5);
   for(let r=0; r<winRows; r++) {
       [ -1.5, 1.5 ].forEach(xx => {
@@ -111,7 +106,7 @@ function createDetailedHouse(worldGroup: THREE.Group, angle: number, side: numbe
       });
   }
 
-  // --- 4. Storefront ---
+  // 4. Storefront
   const store = new THREE.Mesh(new THREE.BoxGeometry(width, 2.5, 0.5), new THREE.MeshLambertMaterial({color: 0x2C3E50})); 
   store.position.set(0, 1.25, 0); 
   houseGroup.add(store);
@@ -120,7 +115,7 @@ function createDetailedHouse(worldGroup: THREE.Group, angle: number, side: numbe
   door.position.set(0, 1.0, 0.3); 
   houseGroup.add(door);
   
-  // --- 5. Main Body & Roof ---
+  // 5. Body & Roof
   const body = new THREE.Mesh(new THREE.BoxGeometry(width - 0.2, height, depth), new THREE.MeshLambertMaterial({color: 0xeeeeee})); 
   body.position.set(0, height/2, -depth/2); 
   houseGroup.add(body);
@@ -130,7 +125,7 @@ function createDetailedHouse(worldGroup: THREE.Group, angle: number, side: numbe
   roof.position.set(0, height, -depth/2); 
   houseGroup.add(roof);
   
-  placeObjectOnWorld(worldGroup, houseGroup, angle, side, 19);
+  placeObjectOnWorld(worldGroup, houseGroup, angle, side, dist);
 }
 
 function createDetailedTrafficSignal(worldGroup: THREE.Group, angle: number, side: number) {
@@ -138,63 +133,24 @@ function createDetailedTrafficSignal(worldGroup: THREE.Group, angle: number, sid
   const darkColor = 0x1a1a1a;
   const poleMat = new THREE.MeshLambertMaterial({ color: darkColor });
 
-  // Base
-  const base1 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.3, 1.2), poleMat); 
-  base1.position.y = 0.15; 
-  signalAssembly.add(base1);
-  
-  const base2 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.3, 0.8), poleMat); 
-  base2.position.y = 0.45; 
-  signalAssembly.add(base2);
-  
-  // Pole
   const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 7, 16), poleMat); 
   pole.position.y = 4.1; 
   pole.castShadow = true; 
   signalAssembly.add(pole);
   
-  // Head Group
   const headGroup = new THREE.Group();
   const box = new THREE.Mesh(new THREE.BoxGeometry(1.6, 4.2, 1.0), poleMat); 
   headGroup.add(box);
   
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.64, 0.64, 1.0, 16).rotateX(Math.PI/2), poleMat); 
-  cap.position.y = 2.1; 
-  headGroup.add(cap);
-  
   const lightGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.1, 32).rotateX(Math.PI/2);
-  const hoodGeo = new THREE.CylinderGeometry(0.6, 0.6, 0.6, 32, 1, true, 0, Math.PI).rotateX(Math.PI/2);
-  const hoodMat = new THREE.MeshBasicMaterial({ color: darkColor, side: THREE.DoubleSide });
-  
   [1.2, 0, -1.2].forEach((y, i) => {
       const c = [0xff0000, 0xffff00, 0x00ff00][i];
-      // Light
       const l = new THREE.Mesh(lightGeo, new THREE.MeshBasicMaterial({color: c})); 
-      l.position.z = 0.55; 
-      l.position.y = y; 
+      l.position.set(0, y, 0.55); 
       headGroup.add(l);
-      
-      // Hood
-      const h = new THREE.Mesh(hoodGeo, hoodMat); 
-      h.position.z = 0.55; 
-      h.position.y = y; 
-      h.rotation.z = -Math.PI/2; 
-      headGroup.add(h);
-      
-      // Side Flaps
-      const fL = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.2, 0.1), poleMat); 
-      fL.position.set(-0.9, y, 0.2); 
-      fL.rotation.y = Math.PI/4; 
-      headGroup.add(fL);
-      
-      const fR = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.2, 0.1), poleMat); 
-      fR.position.set(0.9, y, 0.2); 
-      fR.rotation.y = -Math.PI/4; 
-      headGroup.add(fR);
   });
   
-  // Position head on pole
-  headGroup.position.y = 7 + 0.6 + 1.1; // Matches original math
+  headGroup.position.y = 7 + 0.6 + 1.1; 
   signalAssembly.add(headGroup);
 
   const pivot = new THREE.Object3D(); 

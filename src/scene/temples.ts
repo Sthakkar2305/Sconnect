@@ -9,7 +9,7 @@ const TEMPLE_COLORS = {
   floor: 0x8D6E63,   
   flag: 0xff0000,    
   metal: 0x555555,
-  gold: 0xFFD700     // <--- ADDED MISSING COLOR
+  gold: 0xFFD700
 };
 
 // Reusable materials
@@ -22,12 +22,13 @@ export function createTempleSector(worldGroup: THREE.Group) {
   const sectorEnd = (Math.PI * 4) / 3;
   const sectorSize = sectorEnd - sectorStart;
 
-  // 1. Entrance Gate (Torana)
-  createOrnateGate(worldGroup, sectorStart + 0.1);
+  // 1. Entrance Gate (Torana) - Placed EXACTLY at the start boundary
+  createOrnateGate(worldGroup, sectorStart);
 
   // 2. Street-Side Temples
   const count = 8; 
   for (let i = 0; i < count; i++) {
+    // Distribute temples evenly between the gates
     const angle = sectorStart + (i / count) * sectorSize + 0.2;
     const offset = 18; 
     
@@ -35,8 +36,8 @@ export function createTempleSector(worldGroup: THREE.Group) {
     createStreetSideTemple(worldGroup, angle, 1, offset);
   }
 
-  // 3. Exit Gate
-  createOrnateGate(worldGroup, sectorEnd - 0.1);
+  // 3. Exit Gate - Placed EXACTLY at the end boundary
+  createOrnateGate(worldGroup, sectorEnd);
 }
 
 /**
