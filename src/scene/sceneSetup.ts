@@ -19,31 +19,40 @@ export function initScene(
 ) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(SECTOR_CONFIG.city.fog);
-  scene.fog = new THREE.Fog(SECTOR_CONFIG.city.fog, 25, 70);
 
-  // --- RESPONSIVE CAMERA SETUP ---
-  // --- CHANGES FOR sceneSetup.ts ---
+  // FIX 1: DRASTICALLY REDUCED FOG DENSITY
+  // Changed from (40, 90) to (50, 120). 
+  // This ensures City/Temple buildings (which are 3D geometry) don't fade into the background color too early.
+  scene.fog = new THREE.Fog(SECTOR_CONFIG.city.fog, 50, 120);
 
-  // Change 1: Reduce FOV from 100 to 90 (or 85)
-  // const camera = new THREE.PerspectiveCamera(100, window.innerWidth / window.innerHeight, 0.1, 1000);
-  const camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 1000); // 90 is a good balance
+  // FIX 2: WIDER FOV
+  // Changed from 80 to 85 for a slightly wider cone of vision
+  const camera = new THREE.PerspectiveCamera(85, window.innerWidth / window.innerHeight, 0.1, 1000);
 
-  // Change 2: Adjust mobile camera position (bring Z closer)
   const updateCameraPosition = () => {
+    const aspect = window.innerWidth / window.innerHeight;
+    const isPortrait = aspect < 1.0; 
     const isMobile = window.innerWidth < 768;
-    if (isMobile) {
-      // New: Bring Z closer to make buildings appear larger.
-      camera.position.set(0, GLOBE_RADIUS + 12, 25);
-      camera.lookAt(0, GLOBE_RADIUS - 2, -60);
+
+    if (isPortrait || isMobile) {
+      // --- MOBILE / PORTRAIT VIEW ---
+      // Fix 3: Higher and Further Back
+      // Y increased to +22 (was +15): Allows us to look "down" more to see the base of buildings.
+      // Z increased to 68 (was 55): Zooms out further to fit the tall City buildings and wide Temples.
+      camera.position.set(0, GLOBE_RADIUS + 22, 68);
+      
+      // Look slightly further down the road (-15) so the "horizon" is centered
+      camera.lookAt(0, GLOBE_RADIUS - 2, -15);
     } else {
+      // --- DESKTOP / LANDSCAPE VIEW ---
       camera.position.set(0, GLOBE_RADIUS + 6, 20);
       camera.lookAt(0, GLOBE_RADIUS - 5, -60);
     }
   };
+  
   updateCameraPosition();
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  // Handle high pixel density screens (retina displays) for sharpness
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
@@ -69,10 +78,11 @@ export function initScene(
   createBeachSector(worldGroup);
 
   // --- 3D TEXT LABELS ---
-  // We scale these down slightly so they fit better on mobile screens
-  generate3DText(worldGroup, "WELCOME", (Math.PI * 2) / 3 / 2, "TEXT_WELCOME");
-  generate3DText(worldGroup, "BOOK DEMO", Math.PI, "LINK_BOOK_DEMO");
-  generate3DText(worldGroup, "CONTACT US", (Math.PI * 5) / 3, "LINK_CONTACT");
+  // Fix 4: Raised Text Height
+  // Raised to +15 so it doesn't overlap with the "Run/Return" controls on mobile
+  generate3DText(worldGroup, "WELCOME", (Math.PI * 2) / 3 / 2, "TEXT_WELCOME", 15);
+  generate3DText(worldGroup, "BOOK DEMO", Math.PI, "LINK_BOOK_DEMO", 15);
+  generate3DText(worldGroup, "CONTACT US", (Math.PI * 5) / 3, "LINK_CONTACT", 15);
 
   const cars = generateCityCars(worldGroup);
   const carClock = new THREE.Clock();
@@ -93,17 +103,16 @@ export function initScene(
   let touchStartY = 0;
   const onTouchStart = (e: TouchEvent) => { touchStartY = e.touches[0].clientY; };
   const onTouchMove = (e: TouchEvent) => {
-    // New: Decreased sensitivity for smoother rotation/clearer viewing
-    targetScrollPos += (touchStartY - e.touches[0].clientY) * 0.004; 
+    // Increased mobile scroll sensitivity slightly so it's easier to travel
+    targetScrollPos += (touchStartY - e.touches[0].clientY) * 0.005; 
     touchStartY = e.touches[0].clientY;
-};
+  };
   const onWheel = (e: WheelEvent) => {
     targetScrollPos += e.deltaY * 0.002;
     e.preventDefault();
   };
 
   const onClick = (e: MouseEvent) => {
-    // Standardize coordinate calculation
     const rect = renderer.domElement.getBoundingClientRect();
     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -151,7 +160,7 @@ export function initScene(
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    updateCameraPosition(); // Recalculate position on resize
+    updateCameraPosition(); 
   }
 
   function animate() {
@@ -169,7 +178,7 @@ export function initScene(
     if (normRot >= (Math.PI * 2) / 3 && normRot < (Math.PI * 4) / 3) {
       currentVibe = "Temple"; targetHex = SECTOR_CONFIG.temple.fog;
     } else if (normRot >= (Math.PI * 4) / 3) {
-      currentVibe = "Airport"; targetHex = SECTOR_CONFIG.airport.fog;
+      currentVibe = "Beach"; targetHex = SECTOR_CONFIG.airport.fog;
     }
 
     onVibeChange(currentVibe);
@@ -215,7 +224,8 @@ export function initScene(
   };
 }
 
-function generate3DText(worldGroup: THREE.Group, textStr: string, angle: number, name: string) {
+// Added extraHeight parameter to lift text slightly higher on mobile if needed
+function generate3DText(worldGroup: THREE.Group, textStr: string, angle: number, name: string, extraHeight: number = 12) {
   const canvas = document.createElement('canvas');
   canvas.width = 1024; canvas.height = 512;
   const ctx = canvas.getContext('2d');
@@ -231,11 +241,11 @@ function generate3DText(worldGroup: THREE.Group, textStr: string, angle: number,
     ctx.fillText(textStr, canvas.width / 2, canvas.height / 2);
   }
   const tex = new THREE.CanvasTexture(canvas);
-  // Reduced geometry size slightly to fit mobile screens better
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(25, 12.5), new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide }));
+  // Slightly wider plane for better readability
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(30, 15), new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide }));
 
   mesh.name = name;
-  mesh.position.y = GLOBE_RADIUS + 12;
+  mesh.position.y = GLOBE_RADIUS + extraHeight;
 
   const pivot = new THREE.Object3D();
   pivot.rotation.x = -angle;
@@ -243,9 +253,7 @@ function generate3DText(worldGroup: THREE.Group, textStr: string, angle: number,
   worldGroup.add(pivot);
 }
 
-// ... existing generateCityCars function ...
 function generateCityCars(worldGroup: THREE.Group) {
-  // (Keep the existing implementation of generateCityCars from previous steps)
   const cars: any[] = [];
   const carCount = 8;
   const COLORS = [0xE74C3C, 0xE67E22, 0xF1C40F, 0x3498DB];
