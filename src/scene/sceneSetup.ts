@@ -19,14 +19,8 @@ export function initScene(
 ) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(SECTOR_CONFIG.city.fog);
-
-  // FIX 1: DRASTICALLY REDUCED FOG DENSITY
-  // Changed from (40, 90) to (50, 120). 
-  // This ensures City/Temple buildings (which are 3D geometry) don't fade into the background color too early.
   scene.fog = new THREE.Fog(SECTOR_CONFIG.city.fog, 50, 120);
 
-  // FIX 2: WIDER FOV
-  // Changed from 80 to 85 for a slightly wider cone of vision
   const camera = new THREE.PerspectiveCamera(85, window.innerWidth / window.innerHeight, 0.1, 1000);
 
   const updateCameraPosition = () => {
@@ -35,16 +29,9 @@ export function initScene(
     const isMobile = window.innerWidth < 768;
 
     if (isPortrait || isMobile) {
-      // --- MOBILE / PORTRAIT VIEW ---
-      // Fix 3: Higher and Further Back
-      // Y increased to +22 (was +15): Allows us to look "down" more to see the base of buildings.
-      // Z increased to 68 (was 55): Zooms out further to fit the tall City buildings and wide Temples.
       camera.position.set(0, GLOBE_RADIUS + 22, 68);
-      
-      // Look slightly further down the road (-15) so the "horizon" is centered
       camera.lookAt(0, GLOBE_RADIUS - 2, -15);
     } else {
-      // --- DESKTOP / LANDSCAPE VIEW ---
       camera.position.set(0, GLOBE_RADIUS + 6, 20);
       camera.lookAt(0, GLOBE_RADIUS - 5, -60);
     }
@@ -59,27 +46,21 @@ export function initScene(
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
 
-  // Lights
   scene.add(new THREE.AmbientLight(0xffffff, 0.7));
   const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
   sunLight.position.set(50, 100, 50);
   sunLight.castShadow = true;
   scene.add(sunLight);
 
-  // Groups
   const worldGroup = new THREE.Group();
   scene.add(worldGroup);
 
-  // --- BUILD WORLD ---
   createGround(worldGroup);
   createGlobalRoadMarkings(worldGroup);
   createCitySector(worldGroup);
   createTempleSector(worldGroup);
   createBeachSector(worldGroup);
 
-  // --- 3D TEXT LABELS ---
-  // Fix 4: Raised Text Height
-  // Raised to +15 so it doesn't overlap with the "Run/Return" controls on mobile
   generate3DText(worldGroup, "WELCOME", (Math.PI * 2) / 3 / 2, "TEXT_WELCOME", 15);
   generate3DText(worldGroup, "BOOK DEMO", Math.PI, "LINK_BOOK_DEMO", 15);
   generate3DText(worldGroup, "CONTACT US", (Math.PI * 5) / 3, "LINK_CONTACT", 15);
@@ -89,7 +70,6 @@ export function initScene(
 
   const { machineScreenMat } = createPlayerMachine(scene);
 
-  // --- LOGIC ---
   let scrollPos = 0;
   let targetScrollPos = 0;
   let animationFrameId: number;
@@ -97,21 +77,49 @@ export function initScene(
   const raycaster = new THREE.Raycaster();
   const mouse = new THREE.Vector2();
 
-  const interactableNames = ['TV_SCREEN_FRONT', 'UPLOAD_BUTTON', 'LINK_BOOK_DEMO', 'LINK_CONTACT'];
+  const singleClickNames = ['UPLOAD_BUTTON', 'LINK_BOOK_DEMO', 'LINK_CONTACT'];
+  const doubleClickNames = ['TV_SCREEN_FRONT', 'TV_SCREEN_BACK'];
 
-  // Scroll Handling
+  // --- MOBILE DOUBLE TAP LOGIC ---
+  let lastTapTime = 0;
   let touchStartY = 0;
-  const onTouchStart = (e: TouchEvent) => { touchStartY = e.touches[0].clientY; };
+
+  const onTouchStart = (e: TouchEvent) => {
+    touchStartY = e.touches[0].clientY;
+
+    const currentTime = new Date().getTime();
+    const tapLength = currentTime - lastTapTime;
+
+    if (tapLength < 300 && tapLength > 0) {
+        // --- DOUBLE TAP DETECTED ---
+        const touch = e.touches[0];
+        const rect = renderer.domElement.getBoundingClientRect();
+        mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(scene.children, true);
+        const hit = intersects.find(i => doubleClickNames.includes(i.object.name));
+
+        if (hit) {
+            e.preventDefault(); 
+            onMachineClick();
+        }
+    }
+    lastTapTime = currentTime;
+  };
+
   const onTouchMove = (e: TouchEvent) => {
-    // Increased mobile scroll sensitivity slightly so it's easier to travel
     targetScrollPos += (touchStartY - e.touches[0].clientY) * 0.005; 
     touchStartY = e.touches[0].clientY;
   };
+  
   const onWheel = (e: WheelEvent) => {
     targetScrollPos += e.deltaY * 0.002;
     e.preventDefault();
   };
 
+  // --- DESKTOP SINGLE CLICK ---
   const onClick = (e: MouseEvent) => {
     const rect = renderer.domElement.getBoundingClientRect();
     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -119,21 +127,40 @@ export function initScene(
 
     raycaster.setFromCamera(mouse, camera);
     const intersects = raycaster.intersectObjects(scene.children, true);
-    const hit = intersects.find(i => interactableNames.includes(i.object.name));
+    
+    const hit = intersects.find(i => singleClickNames.includes(i.object.name));
 
     if (hit) {
       switch (hit.object.name) {
-        case 'TV_SCREEN_FRONT':
         case 'UPLOAD_BUTTON':
           onMachineClick();
           break;
+        
+        // --- UPDATED: BOOK DEMO NOW OPENS UPLOAD ---
         case 'LINK_BOOK_DEMO':
-          window.location.href = '/book-demo';
+          onMachineClick(); // <--- Changed from window.location.href
           break;
+          
         case 'LINK_CONTACT':
           window.location.href = 'tel:+918758649149';
           break;
       }
+    }
+  };
+
+  // --- DESKTOP DOUBLE CLICK ---
+  const onDoubleClick = (e: MouseEvent) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(scene.children, true);
+    
+    const hit = intersects.find(i => doubleClickNames.includes(i.object.name));
+
+    if (hit) {
+        onMachineClick();
     }
   };
 
@@ -143,16 +170,18 @@ export function initScene(
     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
     raycaster.setFromCamera(mouse, camera);
+    const allTargets = [...singleClickNames, ...doubleClickNames];
     const intersects = raycaster.intersectObjects(scene.children, true);
-    const isHovering = intersects.some(i => interactableNames.includes(i.object.name));
+    const isHovering = intersects.some(i => allTargets.includes(i.object.name));
 
     document.body.style.cursor = isHovering ? 'pointer' : 'default';
   };
 
   window.addEventListener('wheel', onWheel, { passive: false });
-  window.addEventListener('touchstart', onTouchStart);
+  window.addEventListener('touchstart', onTouchStart, { passive: false });
   window.addEventListener('touchmove', onTouchMove);
   window.addEventListener('click', onClick);
+  window.addEventListener('dblclick', onDoubleClick);
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('resize', onWindowResize);
 
@@ -210,6 +239,7 @@ export function initScene(
       window.removeEventListener('touchstart', onTouchStart);
       window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('click', onClick);
+      window.removeEventListener('dblclick', onDoubleClick);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('resize', onWindowResize);
       container.removeChild(renderer.domElement);
@@ -224,7 +254,6 @@ export function initScene(
   };
 }
 
-// Added extraHeight parameter to lift text slightly higher on mobile if needed
 function generate3DText(worldGroup: THREE.Group, textStr: string, angle: number, name: string, extraHeight: number = 12) {
   const canvas = document.createElement('canvas');
   canvas.width = 1024; canvas.height = 512;
@@ -241,7 +270,6 @@ function generate3DText(worldGroup: THREE.Group, textStr: string, angle: number,
     ctx.fillText(textStr, canvas.width / 2, canvas.height / 2);
   }
   const tex = new THREE.CanvasTexture(canvas);
-  // Slightly wider plane for better readability
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(30, 15), new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide }));
 
   mesh.name = name;

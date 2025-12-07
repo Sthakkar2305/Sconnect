@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { initScene } from '../scene/sceneSetup';
-import { Controls } from './Controls'; // Assuming you have this imported
+import { Controls } from './Controls';
 
 type SceneControls = {
   cleanup: () => void;
@@ -14,15 +14,40 @@ export function StreetScene() {
   const sceneRef = useRef<SceneControls | null>(null);
   const [currentVibe, setCurrentVibe] = useState<string>("City");
 
+  // --- NEW: Handle both Image and Video ---
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if(!file) return;
+    if (!file) return;
+    
     const url = URL.createObjectURL(file);
-    const loader = new THREE.TextureLoader();
-    loader.load(url, (tex) => {
-        tex.colorSpace = THREE.SRGBColorSpace;
-        sceneRef.current?.updateScreen(tex);
-    });
+    const isVideo = file.type.startsWith('video/');
+
+    if (isVideo) {
+      // 1. Create a video element
+      const video = document.createElement('video');
+      video.src = url;
+      video.crossOrigin = "anonymous";
+      video.loop = true;
+      video.muted = true; // Muted needed for autoplay
+      video.playsInline = true;
+      video.play();
+
+      // 2. Create VideoTexture
+      const videoTex = new THREE.VideoTexture(video);
+      videoTex.colorSpace = THREE.SRGBColorSpace;
+      videoTex.minFilter = THREE.LinearFilter;
+      videoTex.magFilter = THREE.LinearFilter;
+      
+      // 3. Update Screen
+      sceneRef.current?.updateScreen(videoTex);
+    } else {
+      // Standard Image Loader
+      const loader = new THREE.TextureLoader();
+      loader.load(url, (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          sceneRef.current?.updateScreen(tex);
+      });
+    }
   };
 
   useEffect(() => {
@@ -42,9 +67,16 @@ export function StreetScene() {
   return (
     <div className="w-full h-screen relative overflow-hidden bg-black">
       <div ref={mountRef} id="canvas-container" className="w-full h-full block" />
-      <input type="file" ref={mediaInputRef} style={{display: 'none'}} accept="image/*" onChange={handleFileSelect} />
+      
+      {/* UPDATE: Accept video files too */}
+      <input 
+        type="file" 
+        ref={mediaInputRef} 
+        style={{display: 'none'}} 
+        accept="image/*,video/*" 
+        onChange={handleFileSelect} 
+      />
 
-      {/* Responsive Nav: Scales down on mobile, adds padding */}
       <nav className="absolute top-4 md:top-5 left-0 w-full z-10 pointer-events-none flex justify-center">
         <ul className="inline-flex p-1 md:p-0 list-none bg-white/10 backdrop-blur-md rounded-full px-4 py-2 md:px-6 md:py-2 shadow-lg gap-2 md:gap-4">
           {['City', 'Temple', 'Beach'].map((vibe) => (
@@ -62,10 +94,8 @@ export function StreetScene() {
         </ul>
       </nav>
 
-      {/* Controls Component (Added here for completeness) */}
       <Controls isRunning={true} />
 
-      {/* Scroll Hint: Hidden on very small screens if it overlaps, or smaller font */}
       <div className="absolute bottom-20 md:bottom-8 left-0 w-full text-center pointer-events-none animate-bounce z-10">
         <span className="text-white/80 font-bold text-[10px] md:text-xs uppercase tracking-widest bg-black/20 px-3 py-1 md:px-4 md:py-1 rounded-full backdrop-blur-sm">
           Scroll / Swipe to Travel
