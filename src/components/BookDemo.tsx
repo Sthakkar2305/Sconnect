@@ -15,13 +15,15 @@ export function BookDemo({ onStartJourney }: BookDemoProps) {
   });
   const [previewTexture, setPreviewTexture] = useState<THREE.Texture | null>(null);
   const [fileName, setFileName] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false); // Loading state
 
-  // Handle Text Inputs
+  // --- PASTE YOUR GOOGLE SCRIPT WEB APP URL HERE ---
+  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw-FM2Q9mJRbki3X9t_MxwZMM5DoBhd5jO2Lhl9qFVbIMZJDvl_mtD0jNyeYeKl9W5jPw/exec";
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // Handle File Upload (Image or Video)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -52,42 +54,60 @@ export function BookDemo({ onStartJourney }: BookDemoProps) {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Validate or send data to backend here...
-    
-    // Start the journey with the uploaded texture
-    onStartJourney(previewTexture);
+    setIsSubmitting(true);
+
+    // --- FIX: Use FormData instead of JSON ---
+    const data = new FormData();
+    data.append("name", formData.name);
+    data.append("phone", formData.phone);
+    data.append("email", formData.email);
+    data.append("org", formData.org);
+
+    try {
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors", // Essential for Google Scripts
+        body: data,      // Send as FormData
+      });
+
+      // 2. Start the Journey
+      setIsSubmitting(false);
+      onStartJourney(previewTexture);
+
+    } catch (error) {
+      console.error("Error submitting form", error);
+      setIsSubmitting(false);
+      // Even if error (usually CORS related), we often want to proceed
+      onStartJourney(previewTexture);
+    }
   };
 
   return (
     <div className="w-full min-h-screen bg-black text-white flex items-center justify-center p-4 md:p-8">
       <div className="max-w-7xl w-full grid grid-cols-1 lg:grid-cols-2 gap-8">
-        
-        {/* LEFT SIDE: 3D PREVIEW */}
+
+        {/* LEFT: 3D PREVIEW */}
         <div className="flex flex-col gap-4">
           <div className="h-[400px] lg:h-[600px] relative">
-             <ChariotPreview previewTexture={previewTexture} />
-             
-             {/* Overlay Text */}
-             <div className="absolute top-4 left-4 bg-black/50 backdrop-blur px-3 py-1 rounded-full border border-white/20">
-                <span className="text-xs font-bold text-green-400">LIVE PREVIEW</span>
-             </div>
+            <ChariotPreview previewTexture={previewTexture} />
+            <div className="absolute top-4 left-4 bg-black/50 backdrop-blur px-3 py-1 rounded-full border border-white/20">
+              <span className="text-xs font-bold text-green-400">LIVE PREVIEW</span>
+            </div>
           </div>
           <div className="text-center text-gray-400 text-sm">
             Upload your media to see it appear on the S-Connect Chariot instantly.
           </div>
         </div>
 
-        {/* RIGHT SIDE: FORM */}
+        {/* RIGHT: FORM */}
         <div className="flex flex-col justify-center">
           <div className="bg-white/5 backdrop-blur-md border border-white/10 p-6 md:p-10 rounded-2xl shadow-xl">
             <h1 className="text-3xl md:text-4xl font-black mb-2 tracking-tighter">BOOK A DEMO</h1>
             <p className="text-gray-400 mb-8">Fill your details and upload your brand identity.</p>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              
-              {/* Inputs */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-gray-500 uppercase">Name</label>
@@ -109,7 +129,6 @@ export function BookDemo({ onStartJourney }: BookDemoProps) {
                 <input required name="org" onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-lg p-3 focus:outline-none focus:border-green-500 transition-colors" placeholder="My Brand Pvt Ltd" />
               </div>
 
-              {/* File Upload */}
               <div className="pt-4">
                 <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Upload Display Media (Image/Video)</label>
                 <div className="relative border-2 border-dashed border-white/20 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group">
@@ -124,13 +143,13 @@ export function BookDemo({ onStartJourney }: BookDemoProps) {
                 </div>
               </div>
 
-              {/* Action Buttons */}
               <div className="pt-6">
-                <button 
-                  type="submit" 
-                  className="w-full bg-gradient-to-r from-green-600 to-green-800 hover:from-green-500 hover:to-green-700 text-white font-black text-xl py-4 rounded-xl shadow-lg transform hover:scale-[1.02] transition-all uppercase tracking-widest"
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className={`w-full bg-gradient-to-r from-green-600 to-green-800 hover:from-green-500 hover:to-green-700 text-white font-black text-xl py-4 rounded-xl shadow-lg transform hover:scale-[1.02] transition-all uppercase tracking-widest ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  Start Journey 🚀
+                  {isSubmitting ? 'Saving...' : 'Start Journey 🚀'}
                 </button>
               </div>
 
