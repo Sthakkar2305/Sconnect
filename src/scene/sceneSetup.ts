@@ -8,9 +8,9 @@ import { createPlayerMachine } from './chariot';
 import { GLOBE_RADIUS } from './curvePlacement';
 
 const SECTOR_CONFIG = {
-  city: { fog: 0xffde00 },
-  temple: { fog: 0xFFE0B2 },
-  airport: { fog: 0x87CEEB }
+  Welcome: { fog: 0xffde00 },
+  BookDemo: { fog: 0xFFE0B2 },
+  Contactus: { fog: 0x87CEEB }
 };
 
 export function initScene(
@@ -20,8 +20,8 @@ export function initScene(
   onBookDemoClick: () => void // <--- NEW PARAMETER
 ) {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(SECTOR_CONFIG.city.fog);
-  scene.fog = new THREE.Fog(SECTOR_CONFIG.city.fog, 50, 120);
+  scene.background = new THREE.Color(SECTOR_CONFIG.Welcome.fog);
+  scene.fog = new THREE.Fog(SECTOR_CONFIG.Welcome.fog, 50, 120);
 
   // ... (Keep camera setup exactly as it was) ...
   const camera = new THREE.PerspectiveCamera(85, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -63,7 +63,7 @@ export function initScene(
   createTempleSector(worldGroup);
   createBeachSector(worldGroup);
 
-  generate3DText(worldGroup, "WELCOME", (Math.PI * 2) / 3 / 2, "TEXT_WELCOME", 15);
+  generate3DText(worldGroup, "Welcome", (Math.PI * 2) / 3 / 2, "TEXT_WELCOME", 15);
   generate3DText(worldGroup, "BOOK DEMO", Math.PI, "LINK_BOOK_DEMO", 15);
   generate3DText(worldGroup, "CONTACT US", (Math.PI * 5) / 3, "LINK_CONTACT", 15);
 
@@ -178,12 +178,12 @@ export function initScene(
     worldGroup.rotation.x = scrollPos;
     let normRot = scrollPos % (Math.PI * 2);
     if (normRot < 0) normRot += Math.PI * 2;
-    let currentVibe = "City";
-    let targetHex = SECTOR_CONFIG.city.fog;
+    let currentVibe = "Welcome";
+    let targetHex = SECTOR_CONFIG.Welcome.fog;
     if (normRot >= (Math.PI * 2) / 3 && normRot < (Math.PI * 4) / 3) {
-      currentVibe = "Temple"; targetHex = SECTOR_CONFIG.temple.fog;
+      currentVibe = "Book Demo"; targetHex = SECTOR_CONFIG.BookDemo.fog;
     } else if (normRot >= (Math.PI * 4) / 3) {
-      currentVibe = "Beach"; targetHex = SECTOR_CONFIG.airport.fog;
+      currentVibe = "Contact us"; targetHex = SECTOR_CONFIG.Contactus.fog;
     }
     onVibeChange(currentVibe);
     const targetColor = new THREE.Color(targetHex);
