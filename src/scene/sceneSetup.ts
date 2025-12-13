@@ -15,7 +15,7 @@ const SECTOR_CONFIG = {
 };
 
 const ANGLES = {
-  WELCOME: 0.4,
+  WELCOME: 0.7,
   ABOUT: Math.PI * 0.75,
   DEMO: Math.PI + 0.4,
   CONTACT: Math.PI * 1.75
@@ -71,8 +71,8 @@ export function initScene(
   
   createTempleSector(worldGroup); 
   
-  // FIX: Capture blades safely
-  // @ts-ignore 
+  // FIX: Capture the blades array. If nature.ts doesn't return anything, use empty array to prevent crash.
+  // @ts-ignore (Ignores type check if nature.ts hasn't been updated to return array yet)
   const windBlades = createNatureSector(worldGroup) || []; 
   
   createCitySector(worldGroup);   
@@ -86,7 +86,6 @@ export function initScene(
   generate3DText(worldGroup, "BOOK DEMO", ANGLES.DEMO, "LINK_BOOK_DEMO", 15);
   generate3DText(worldGroup, "CONTACT US", ANGLES.CONTACT, "LINK_CONTACT", 15);
 
-  // Cars with Anti-Collision Logic
   const cars = generateCityCars(worldGroup);
   const carClock = new THREE.Clock();
 
@@ -225,7 +224,7 @@ export function initScene(
 
     const delta = carClock.getDelta();
 
-    // Rotate Windmills
+    // --- FIX: ROTATE WINDMILLS ---
     if (windBlades && windBlades.length > 0) {
         windBlades.forEach((bladeGroup: THREE.Group, index: number) => {
             const speed = 2.0 + (index * 0.5); 
@@ -233,14 +232,9 @@ export function initScene(
         });
     }
 
-    // Move Cars
     cars.forEach(car => {
       car.angle += car.speed * delta;
-      // Loop point: (Math.PI * 3)/2 is the end of the city sector
-      if (car.angle > (Math.PI * 3)/2) {
-          // Reset to start of city sector
-          car.angle = Math.PI; 
-      }
+      if (car.angle > (Math.PI * 3)/2) car.angle = Math.PI; 
       car.pivot.rotation.x = -car.angle;
     });
 
@@ -319,49 +313,96 @@ function generate3DText(worldGroup: THREE.Group, textStr: string, angle: number,
     const pivot = new THREE.Object3D(); pivot.rotation.x = -angle; pivot.add(mesh); worldGroup.add(pivot);
 }
 
-function createDetailedCar(type: 'nano' | 'xuv' | 'mercedes', color: number) {
+// --- NEW FUNCTION: 3 REALISTIC CAR TYPES ---
+function createRealisticCar(type: 'nano' | 'xuv' | 'mercedes', color: number) {
   const carGroup = new THREE.Group();
+
   const mainMat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.2, metalness: 0.4 });
-  const darkMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 }); 
-  const glassMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.0, metalness: 0.9 }); 
-  const rimMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8 }); 
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 }); // Bumpers/Tires
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.0, metalness: 0.9 }); // Windows
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8 }); // Silver rims
   const yellowLight = new THREE.MeshBasicMaterial({ color: 0xffffaa });
   const redLight = new THREE.MeshBasicMaterial({ color: 0xff0000 });
 
   let bodyGeo, cabinGeo;
   let wheelRadius, wheelWidth, chassisY, cabinY;
 
+  // --- 1. Define Geometry based on Type ---
   if (type === 'nano') {
+      // NANO: Small, Tall, Stubby
       bodyGeo = new THREE.BoxGeometry(3.2, 1.2, 1.8);
-      cabinGeo = new THREE.BoxGeometry(2.0, 0.9, 1.6);
-      wheelRadius = 0.3; wheelWidth = 0.25; chassisY = 0.5; cabinY = 1.3;
-  } else if (type === 'xuv') {
+      cabinGeo = new THREE.BoxGeometry(2.0, 0.9, 1.6); // Tall cabin
+      wheelRadius = 0.3; wheelWidth = 0.25;
+      chassisY = 0.5; cabinY = 1.3;
+  } 
+  else if (type === 'xuv') {
+      // XUV 700: Big, Boxy, High Ground Clearance
       bodyGeo = new THREE.BoxGeometry(4.8, 1.4, 2.2);
       cabinGeo = new THREE.BoxGeometry(3.0, 0.8, 2.0);
-      wheelRadius = 0.45; wheelWidth = 0.35; chassisY = 0.7; cabinY = 1.6;
-  } else { 
+      wheelRadius = 0.45; wheelWidth = 0.35;
+      chassisY = 0.7; cabinY = 1.6;
+  } 
+  else { // 'mercedes'
+      // MERCEDES: Long, Sleek, Low
       bodyGeo = new THREE.BoxGeometry(5.2, 1.0, 2.0);
       cabinGeo = new THREE.BoxGeometry(2.8, 0.7, 1.8);
-      wheelRadius = 0.38; wheelWidth = 0.3; chassisY = 0.5; cabinY = 1.2;
+      wheelRadius = 0.38; wheelWidth = 0.3;
+      chassisY = 0.5; cabinY = 1.2;
   }
 
-  const body = new THREE.Mesh(bodyGeo, mainMat); body.position.y = chassisY; carGroup.add(body);
-  const cabin = new THREE.Mesh(cabinGeo, glassMat); cabin.position.set(-0.2, cabinY, 0); carGroup.add(cabin);
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(cabinGeo.parameters.width * 0.95, 0.1, cabinGeo.parameters.depth * 0.95), mainMat); roof.position.set(-0.2, cabinY + (cabinGeo.parameters.height/2), 0); carGroup.add(roof);
+  // --- 2. Build Car Parts ---
+  
+  // Body
+  const body = new THREE.Mesh(bodyGeo, mainMat);
+  body.position.y = chassisY; 
+  carGroup.add(body);
 
-  const bodyW = bodyGeo.parameters.width; const bodyD = bodyGeo.parameters.depth;
+  // Cabin (Glass area)
+  const cabin = new THREE.Mesh(cabinGeo, glassMat);
+  cabin.position.set(-0.2, cabinY, 0);
+  carGroup.add(cabin);
+
+  // Roof (Top of cabin)
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(cabinGeo.parameters.width * 0.95, 0.1, cabinGeo.parameters.depth * 0.95), mainMat);
+  roof.position.set(-0.2, cabinY + (cabinGeo.parameters.height/2), 0);
+  carGroup.add(roof);
+
+  // Headlights (Front)
   const hlGeo = new THREE.BoxGeometry(0.1, 0.2, 0.4);
+  const bodyW = bodyGeo.parameters.width;
+  const bodyD = bodyGeo.parameters.depth;
+  
   const hlL = new THREE.Mesh(hlGeo, yellowLight); hlL.position.set(bodyW/2, chassisY + 0.2, bodyD/2 - 0.3); carGroup.add(hlL);
   const hlR = hlL.clone(); hlR.position.z = -(bodyD/2 - 0.3); carGroup.add(hlR);
+
+  // Taillights (Rear)
   const tlL = new THREE.Mesh(hlGeo, redLight); tlL.position.set(-bodyW/2, chassisY + 0.2, bodyD/2 - 0.3); carGroup.add(tlL);
   const tlR = tlL.clone(); tlR.position.z = -(bodyD/2 - 0.3); carGroup.add(tlR);
 
-  const wheelGeo = new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelWidth, 16); wheelGeo.rotateX(Math.PI/2);
-  const wx = bodyW / 2 - 0.8; const wz = bodyD / 2;
-  [{x:wx,z:wz}, {x:wx,z:-wz}, {x:-wx,z:wz}, {x:-wx,z:-wz}].forEach(p => {
-      const w = new THREE.Mesh(wheelGeo, darkMat); w.position.set(p.x, wheelRadius, p.z);
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(wheelRadius * 0.6, wheelRadius * 0.6, wheelWidth + 0.05, 8), rimMat); cap.rotation.x = Math.PI/2; cap.position.copy(w.position);
-      carGroup.add(w); carGroup.add(cap);
+  // Wheels
+  const wheelGeo = new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelWidth, 16);
+  wheelGeo.rotateX(Math.PI/2);
+  
+  // Calculate wheel positions based on body size
+  const wx = bodyW / 2 - 0.8;
+  const wz = bodyD / 2; // flush with body
+  
+  const wheelPos = [
+      { x: wx, z: wz }, { x: wx, z: -wz },   // Front
+      { x: -wx, z: wz }, { x: -wx, z: -wz }  // Back
+  ];
+
+  wheelPos.forEach(p => {
+      const w = new THREE.Mesh(wheelGeo, darkMat);
+      w.position.set(p.x, wheelRadius, p.z);
+      
+      // Rim/Hubcap
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(wheelRadius * 0.6, wheelRadius * 0.6, wheelWidth + 0.05, 8), rimMat);
+      rim.rotation.x = Math.PI/2;
+      rim.position.copy(w.position);
+      
+      carGroup.add(w);
+      carGroup.add(rim);
   });
 
   return carGroup;
@@ -369,42 +410,42 @@ function createDetailedCar(type: 'nano' | 'xuv' | 'mercedes', color: number) {
 
 function generateCityCars(worldGroup: THREE.Group) {
   const cars: any[] = [];
-  const carCount = 6; // Keep even number for equal distribution
+  const carCount = 6; // Increased count slightly
   const COLORS = [0xE74C3C, 0xF1C40F, 0x3498DB, 0xFFFFFF, 0x333333, 0x888888];
   
+  // Cars belong to City Sector (180 to 270)
   const sectorStart = Math.PI; 
   const sectorEnd = (Math.PI * 3)/2; 
   const range = sectorEnd - sectorStart;
 
   for (let i = 0; i < carCount; i++) {
-    // Distribute cars evenly across the sector
     const angle = sectorStart + (i / carCount) * range;
-    
-    // STRICT ALTERNATING LANES
     const side = i % 2 === 0 ? 1 : -1;
+    const speed = 0.1 + Math.random() * 0.1;
     
-    // --- FIX: NO RANDOM SPEED ---
-    // Right Lane (1) = Fast (0.18)
-    // Left Lane (-1) = Slow (0.12)
-    // This ensures cars in the same lane ALWAYS maintain distance
-    const speed = side === 1 ? 0.18 : 0.12;
-    
+    // Pick a random car type
     const rand = Math.random();
     let type: 'nano' | 'xuv' | 'mercedes' = 'mercedes';
-    if(rand < 0.33) type = 'nano'; else if(rand < 0.66) type = 'xuv';
+    if(rand < 0.33) type = 'nano';
+    else if(rand < 0.66) type = 'xuv';
 
-    const carGroup = createDetailedCar(type, COLORS[Math.floor(Math.random() * COLORS.length)]);
+    const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+    
+    // --- CREATE REALISTIC CAR ---
+    const carGroup = createRealisticCar(type, color);
     
     const pivot = new THREE.Object3D();
     const offsetAngle = (8.0 / GLOBE_RADIUS) * side;
+    
+    // Position on road
     carGroup.position.y = GLOBE_RADIUS + 0.1; 
     
-    // Orientation: If side 1, rotate 180 (depends on your world logic, usually one way traffic)
-    // Assuming 2-way traffic:
+    // Orient car to drive forward
+    carGroup.rotation.y = Math.PI / 2;
+    // If driving on left side (-1), rotate 180 to face other way? 
+    // Usually traffic drives one way on one side. Let's assume standard 2-way traffic.
     if (side === 1) {
-       carGroup.rotation.y = -Math.PI / 2; 
-    } else {
-       carGroup.rotation.y = Math.PI / 2;
+       carGroup.rotation.y = -Math.PI / 2; // Face opposite direction
     }
 
     pivot.add(carGroup); 
