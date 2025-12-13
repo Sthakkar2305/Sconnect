@@ -15,7 +15,7 @@ export function BookDemo({ onStartJourney, onBack }: BookDemoProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // REPLACE THIS WITH YOUR GOOGLE SCRIPT URL
-  const GOOGLE_SCRIPT_URL = "YOUR_WEB_APP_URL_HERE"; 
+  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw-FM2Q9mJRbki3X9t_MxwZMM5DoBhd5jO2Lhl9qFVbIMZJDvl_mtD0jNyeYeKl9W5jPw/exec"; 
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });

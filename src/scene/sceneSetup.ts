@@ -3,24 +3,22 @@ import { createGround } from './ground';
 import { createCitySector, createGlobalRoadMarkings } from './buildings';
 import { createTempleSector } from './temples';
 import { createBeachSector } from './playground';
-import { createNatureSector } from './nature'; // <--- Import New Scene
+import { createNatureSector } from './nature';
 import { createPlayerMachine } from './chariot';
 import { GLOBE_RADIUS } from './curvePlacement';
 
-// 4 Colors for 4 Sectors
 const SECTOR_CONFIG = {
-  city: { fog: 0xffde00 },    // Yellow (Morning)
-  nature: { fog: 0x4caf50 },  // Green (Day/Eco) <-- NEW
-  temple: { fog: 0xFFE0B2 },  // Orange (Sunset)
-  contact: { fog: 0x87CEEB }  // Blue (Clear Sky)
+  city: { fog: 0xffde00 },
+  temple: { fog: 0xFFE0B2 },
+  nature: { fog: 0x4caf50 },
+  airport: { fog: 0x87CEEB }
 };
 
-// 4 Navigation Angles
 const ANGLES = {
-  WELCOME: 0.2,             // Start of City
-  ABOUT: Math.PI * 0.75,    // Middle of Solar Park (135 deg)
-  DEMO: Math.PI * 1.25,     // Middle of Temple (225 deg)
-  CONTACT: Math.PI * 1.75   // Middle of Contact (315 deg)
+  WELCOME: 0.4,
+  ABOUT: Math.PI * 0.75,
+  DEMO: Math.PI + 0.4,
+  CONTACT: Math.PI * 1.75
 };
 
 export function initScene(
@@ -32,8 +30,8 @@ export function initScene(
   onAboutClick: () => void
 ) {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(SECTOR_CONFIG.city.fog);
-  scene.fog = new THREE.Fog(SECTOR_CONFIG.city.fog, 50, 120);
+  scene.background = new THREE.Color(SECTOR_CONFIG.temple.fog);
+  scene.fog = new THREE.Fog(SECTOR_CONFIG.temple.fog, 50, 120);
 
   const camera = new THREE.PerspectiveCamera(85, window.innerWidth / window.innerHeight, 0.1, 1000);
 
@@ -41,7 +39,6 @@ export function initScene(
     const aspect = window.innerWidth / window.innerHeight;
     const isPortrait = aspect < 1.0; 
     const isMobile = window.innerWidth < 768;
-
     if (isPortrait || isMobile) {
       camera.position.set(0, GLOBE_RADIUS + 22, 68);
       camera.lookAt(0, GLOBE_RADIUS - 2, -15);
@@ -50,7 +47,6 @@ export function initScene(
       camera.lookAt(0, GLOBE_RADIUS - 5, -60);
     }
   };
-  
   updateCameraPosition();
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -69,29 +65,37 @@ export function initScene(
   const worldGroup = new THREE.Group();
   scene.add(worldGroup);
 
-  // --- BUILD WORLD (4 SECTORS) ---
+  // --- BUILD WORLD ---
   createGround(worldGroup);
   createGlobalRoadMarkings(worldGroup);
   
-  createCitySector(worldGroup);   // 0 - 90 deg
-  createNatureSector(worldGroup); // 90 - 180 deg (NEW)
-  createTempleSector(worldGroup); // 180 - 270 deg
-  createBeachSector(worldGroup);  // 270 - 360 deg
+  createTempleSector(worldGroup); 
+  
+  // FIX: Capture blades safely
+  // @ts-ignore 
+  const windBlades = createNatureSector(worldGroup) || []; 
+  
+  createCitySector(worldGroup);   
+  createBeachSector(worldGroup);  
 
-  // --- 3D TEXT LABELS ---
+  createGlobalClouds(worldGroup);
+
+  // --- TEXT LABELS ---
   generate3DText(worldGroup, "WELCOME", ANGLES.WELCOME, "TEXT_WELCOME", 15);
   generate3DText(worldGroup, "ABOUT US", ANGLES.ABOUT, "LINK_ABOUT", 15);
   generate3DText(worldGroup, "BOOK DEMO", ANGLES.DEMO, "LINK_BOOK_DEMO", 15);
   generate3DText(worldGroup, "CONTACT US", ANGLES.CONTACT, "LINK_CONTACT", 15);
 
+  // Cars with Anti-Collision Logic
   const cars = generateCityCars(worldGroup);
   const carClock = new THREE.Clock();
 
   const { machineScreenMat } = createPlayerMachine(scene);
 
-  // Logic Variables
-  let scrollPos = 0;
-  let targetScrollPos = 0;
+  // --- INITIAL SCROLL POSITION ---
+  let scrollPos = -0.1; 
+  let targetScrollPos = -0.1;
+  
   let isAutoScrolling = false; 
   let autoScrollCallback: (() => void) | null = null;
   let animationFrameId: number;
@@ -102,7 +106,6 @@ export function initScene(
   const singleClickNames = ['UPLOAD_BUTTON', 'LINK_BOOK_DEMO', 'LINK_CONTACT', 'LINK_ABOUT'];
   const doubleClickNames = ['TV_SCREEN_FRONT', 'TV_SCREEN_BACK'];
 
-  // Input Handling
   let touchStartY = 0;
   let lastTapTime = 0;
 
@@ -111,7 +114,6 @@ export function initScene(
     touchStartY = e.touches[0].clientY;
     const currentTime = new Date().getTime();
     if (currentTime - lastTapTime < 300) {
-        // Double Tap Logic
         const touch = e.touches[0];
         const rect = renderer.domElement.getBoundingClientRect();
         mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
@@ -141,7 +143,6 @@ export function initScene(
     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
     const hit = raycaster.intersectObjects(scene.children, true).find(i => singleClickNames.includes(i.object.name));
-
     if (hit) {
       switch (hit.object.name) {
         case 'UPLOAD_BUTTON': onMachineClick(); break;
@@ -200,20 +201,20 @@ export function initScene(
     let normRot = scrollPos % (Math.PI * 2);
     if (normRot < 0) normRot += Math.PI * 2;
     
-    // --- 4 SECTOR LOGIC ---
     let currentVibe = "Welcome"; 
-    let targetHex = SECTOR_CONFIG.city.fog;
+    let targetHex = SECTOR_CONFIG.temple.fog;
 
-    // 0 - PI/2 is Welcome (Default)
-    if (normRot >= Math.PI / 2 && normRot < Math.PI) {
-      currentVibe = "About Us"; 
-      targetHex = SECTOR_CONFIG.nature.fog;
-    } else if (normRot >= Math.PI && normRot < (Math.PI * 3) / 2) {
-      currentVibe = "Book Demo"; 
-      targetHex = SECTOR_CONFIG.temple.fog;
-    } else if (normRot >= (Math.PI * 3) / 2) {
-      currentVibe = "Contact Us"; 
-      targetHex = SECTOR_CONFIG.contact.fog;
+    if (normRot >= 0 && normRot < Math.PI/2) {
+        currentVibe = "Welcome"; targetHex = SECTOR_CONFIG.temple.fog;
+    }
+    else if (normRot >= Math.PI/2 && normRot < Math.PI) {
+        currentVibe = "About Us"; targetHex = SECTOR_CONFIG.nature.fog;
+    }
+    else if (normRot >= Math.PI && normRot < (Math.PI * 3)/2) {
+        currentVibe = "Book Demo"; targetHex = SECTOR_CONFIG.city.fog;
+    }
+    else {
+        currentVibe = "Contact Us"; targetHex = SECTOR_CONFIG.airport.fog;
     }
 
     onVibeChange(currentVibe);
@@ -223,9 +224,23 @@ export function initScene(
     scene.fog!.color.lerp(targetColor, 0.05);
 
     const delta = carClock.getDelta();
+
+    // Rotate Windmills
+    if (windBlades && windBlades.length > 0) {
+        windBlades.forEach((bladeGroup: THREE.Group, index: number) => {
+            const speed = 2.0 + (index * 0.5); 
+            bladeGroup.rotation.z -= speed * delta; 
+        });
+    }
+
+    // Move Cars
     cars.forEach(car => {
       car.angle += car.speed * delta;
-      if (car.angle > Math.PI/2) car.angle = 0; // Reset after City sector
+      // Loop point: (Math.PI * 3)/2 is the end of the city sector
+      if (car.angle > (Math.PI * 3)/2) {
+          // Reset to start of city sector
+          car.angle = Math.PI; 
+      }
       car.pivot.rotation.x = -car.angle;
     });
 
@@ -237,15 +252,10 @@ export function initScene(
   const scrollTo = (target: 'ABOUT' | 'DEMO' | 'CONTACT', onArrival: () => void) => {
       isAutoScrolling = true;
       autoScrollCallback = onArrival;
-      
       const angle = ANGLES[target];
       const cycle = Math.floor(targetScrollPos / (Math.PI * 2));
       let newTarget = cycle * (Math.PI * 2) + angle;
-
-      if (newTarget < targetScrollPos - Math.PI) {
-          newTarget += Math.PI * 2;
-      } 
-      
+      if (newTarget < targetScrollPos - Math.PI) newTarget += Math.PI * 2;
       targetScrollPos = newTarget;
   };
 
@@ -272,59 +282,135 @@ export function initScene(
   };
 }
 
+function createGlobalClouds(worldGroup: THREE.Group) {
+    const cloudGeo = new THREE.SphereGeometry(1, 7, 7);
+    const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+    const cloudCount = 60; 
+    for (let i = 0; i < cloudCount; i++) {
+        const cloudGroup = new THREE.Group();
+        for (let j = 0; j < 5; j++) {
+            const m = new THREE.Mesh(cloudGeo, cloudMat);
+            m.position.set((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 3);
+            m.scale.setScalar(1 + Math.random());
+            cloudGroup.add(m);
+        }
+        const pivot = new THREE.Object3D();
+        const angle = Math.random() * Math.PI * 2;
+        pivot.rotation.x = -angle; 
+        pivot.rotation.z = (Math.random() - 0.5) * 0.8; 
+        cloudGroup.position.y = GLOBE_RADIUS + 20 + Math.random() * 15;
+        pivot.add(cloudGroup);
+        worldGroup.add(pivot);
+    }
+}
+
 function generate3DText(worldGroup: THREE.Group, textStr: string, angle: number, name: string, extraHeight: number = 12) {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1024; canvas.height = 512;
+    const canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 512;
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.font = '900 120px "Segoe UI", sans-serif';
-      ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.shadowColor = "rgba(0,0,0,0.5)";
-      ctx.shadowBlur = 10;
-      ctx.strokeStyle = 'black'; ctx.lineWidth = 4;
-      ctx.strokeText(textStr, canvas.width / 2, canvas.height / 2);
-      ctx.fillText(textStr, canvas.width / 2, canvas.height / 2);
+      ctx.font = '900 120px "Segoe UI", sans-serif'; ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 10; ctx.strokeStyle = 'black'; ctx.lineWidth = 4;
+      ctx.strokeText(textStr, canvas.width / 2, canvas.height / 2); ctx.fillText(textStr, canvas.width / 2, canvas.height / 2);
     }
     const tex = new THREE.CanvasTexture(canvas);
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(30, 15), new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide }));
-    mesh.name = name;
-    mesh.position.y = GLOBE_RADIUS + extraHeight;
-    const pivot = new THREE.Object3D();
-    pivot.rotation.x = -angle;
-    pivot.add(mesh);
-    worldGroup.add(pivot);
+    mesh.name = name; mesh.position.y = GLOBE_RADIUS + extraHeight;
+    const pivot = new THREE.Object3D(); pivot.rotation.x = -angle; pivot.add(mesh); worldGroup.add(pivot);
+}
+
+function createDetailedCar(type: 'nano' | 'xuv' | 'mercedes', color: number) {
+  const carGroup = new THREE.Group();
+  const mainMat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.2, metalness: 0.4 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 }); 
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.0, metalness: 0.9 }); 
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8 }); 
+  const yellowLight = new THREE.MeshBasicMaterial({ color: 0xffffaa });
+  const redLight = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+
+  let bodyGeo, cabinGeo;
+  let wheelRadius, wheelWidth, chassisY, cabinY;
+
+  if (type === 'nano') {
+      bodyGeo = new THREE.BoxGeometry(3.2, 1.2, 1.8);
+      cabinGeo = new THREE.BoxGeometry(2.0, 0.9, 1.6);
+      wheelRadius = 0.3; wheelWidth = 0.25; chassisY = 0.5; cabinY = 1.3;
+  } else if (type === 'xuv') {
+      bodyGeo = new THREE.BoxGeometry(4.8, 1.4, 2.2);
+      cabinGeo = new THREE.BoxGeometry(3.0, 0.8, 2.0);
+      wheelRadius = 0.45; wheelWidth = 0.35; chassisY = 0.7; cabinY = 1.6;
+  } else { 
+      bodyGeo = new THREE.BoxGeometry(5.2, 1.0, 2.0);
+      cabinGeo = new THREE.BoxGeometry(2.8, 0.7, 1.8);
+      wheelRadius = 0.38; wheelWidth = 0.3; chassisY = 0.5; cabinY = 1.2;
+  }
+
+  const body = new THREE.Mesh(bodyGeo, mainMat); body.position.y = chassisY; carGroup.add(body);
+  const cabin = new THREE.Mesh(cabinGeo, glassMat); cabin.position.set(-0.2, cabinY, 0); carGroup.add(cabin);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(cabinGeo.parameters.width * 0.95, 0.1, cabinGeo.parameters.depth * 0.95), mainMat); roof.position.set(-0.2, cabinY + (cabinGeo.parameters.height/2), 0); carGroup.add(roof);
+
+  const bodyW = bodyGeo.parameters.width; const bodyD = bodyGeo.parameters.depth;
+  const hlGeo = new THREE.BoxGeometry(0.1, 0.2, 0.4);
+  const hlL = new THREE.Mesh(hlGeo, yellowLight); hlL.position.set(bodyW/2, chassisY + 0.2, bodyD/2 - 0.3); carGroup.add(hlL);
+  const hlR = hlL.clone(); hlR.position.z = -(bodyD/2 - 0.3); carGroup.add(hlR);
+  const tlL = new THREE.Mesh(hlGeo, redLight); tlL.position.set(-bodyW/2, chassisY + 0.2, bodyD/2 - 0.3); carGroup.add(tlL);
+  const tlR = tlL.clone(); tlR.position.z = -(bodyD/2 - 0.3); carGroup.add(tlR);
+
+  const wheelGeo = new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelWidth, 16); wheelGeo.rotateX(Math.PI/2);
+  const wx = bodyW / 2 - 0.8; const wz = bodyD / 2;
+  [{x:wx,z:wz}, {x:wx,z:-wz}, {x:-wx,z:wz}, {x:-wx,z:-wz}].forEach(p => {
+      const w = new THREE.Mesh(wheelGeo, darkMat); w.position.set(p.x, wheelRadius, p.z);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(wheelRadius * 0.6, wheelRadius * 0.6, wheelWidth + 0.05, 8), rimMat); cap.rotation.x = Math.PI/2; cap.position.copy(w.position);
+      carGroup.add(w); carGroup.add(cap);
+  });
+
+  return carGroup;
 }
 
 function generateCityCars(worldGroup: THREE.Group) {
   const cars: any[] = [];
-  const carCount = 5; // Reduced slightly for shorter sector
-  const COLORS = [0xE74C3C, 0xE67E22, 0xF1C40F, 0x3498DB];
-  const citySectorEnd = Math.PI / 2; // Update limit for cars
+  const carCount = 6; // Keep even number for equal distribution
+  const COLORS = [0xE74C3C, 0xF1C40F, 0x3498DB, 0xFFFFFF, 0x333333, 0x888888];
   
+  const sectorStart = Math.PI; 
+  const sectorEnd = (Math.PI * 3)/2; 
+  const range = sectorEnd - sectorStart;
+
   for (let i = 0; i < carCount; i++) {
-    const angle = (i / carCount) * citySectorEnd;
+    // Distribute cars evenly across the sector
+    const angle = sectorStart + (i / carCount) * range;
+    
+    // STRICT ALTERNATING LANES
     const side = i % 2 === 0 ? 1 : -1;
-    const speed = 0.1 + Math.random() * 0.1;
-    const carGroup = new THREE.Group();
-    const color = COLORS[Math.floor(Math.random() * COLORS.length)];
-    const body = new THREE.Mesh(new THREE.BoxGeometry(4.7, 0.75, 1.95), new THREE.MeshStandardMaterial({ color }));
-    body.position.y = 0.55; carGroup.add(body);
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.6, 1.6), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-    cabin.position.set(-0.2, 1.25, 0); carGroup.add(cabin);
-    const wMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-    [[1.3, 0.9], [1.3, -0.9], [-1.3, 0.9], [-1.3, -0.9]].forEach(pos => {
-      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.3).rotateX(Math.PI / 2), wMat);
-      w.position.set(pos[0], 0.35, pos[1]);
-      carGroup.add(w);
-    });
+    
+    // --- FIX: NO RANDOM SPEED ---
+    // Right Lane (1) = Fast (0.18)
+    // Left Lane (-1) = Slow (0.12)
+    // This ensures cars in the same lane ALWAYS maintain distance
+    const speed = side === 1 ? 0.18 : 0.12;
+    
+    const rand = Math.random();
+    let type: 'nano' | 'xuv' | 'mercedes' = 'mercedes';
+    if(rand < 0.33) type = 'nano'; else if(rand < 0.66) type = 'xuv';
+
+    const carGroup = createDetailedCar(type, COLORS[Math.floor(Math.random() * COLORS.length)]);
+    
     const pivot = new THREE.Object3D();
     const offsetAngle = (8.0 / GLOBE_RADIUS) * side;
-    carGroup.position.y = GLOBE_RADIUS + 0.15;
-    carGroup.rotation.y = Math.PI / 2;
-    pivot.add(carGroup);
-    pivot.rotation.x = -angle;
+    carGroup.position.y = GLOBE_RADIUS + 0.1; 
+    
+    // Orientation: If side 1, rotate 180 (depends on your world logic, usually one way traffic)
+    // Assuming 2-way traffic:
+    if (side === 1) {
+       carGroup.rotation.y = -Math.PI / 2; 
+    } else {
+       carGroup.rotation.y = Math.PI / 2;
+    }
+
+    pivot.add(carGroup); 
+    pivot.rotation.x = -angle; 
     pivot.rotation.z = offsetAngle;
+    
     worldGroup.add(pivot);
     cars.push({ pivot, angle, speed, side });
   }

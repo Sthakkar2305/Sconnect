@@ -20,12 +20,12 @@ const matMetal = new THREE.MeshStandardMaterial({ color: TEMPLE_COLORS.metal });
 const matGold = new THREE.MeshStandardMaterial({ color: TEMPLE_COLORS.gold, metalness: 0.8, roughness: 0.2 });
 
 export function createTempleSector(worldGroup: THREE.Group) {
-    const sectorStart = Math.PI;       // Starts at 180 degrees
-    const sectorEnd = (Math.PI * 3) / 2; // Ends at 270 degrees
+    const sectorStart = 0;
+    const sectorEnd = Math.PI / 2;
     const sectorSize = sectorEnd - sectorStart;
 
     // 1. Entrance Gate (Torana) - Start Text
-    createOrnateGate(worldGroup, sectorStart, "WELCOME TO AYODHYA");
+    createOrnateGate(worldGroup, sectorStart, "Rath X Welcome you");
 
     // 2. Street-Side Temples - WITH STAIRS ON FACING SIDE
     const count = 8;
@@ -38,7 +38,7 @@ export function createTempleSector(worldGroup: THREE.Group) {
     }
 
     // 3. Exit Gate - End Text (UPDATED)
-    createOrnateGate(worldGroup, sectorEnd, "THANKS FOR VISIT AYODHYA");
+    createOrnateGate(worldGroup, sectorEnd, "THANKS FOR EXPLORING RATH X");
 }
 
 /**
