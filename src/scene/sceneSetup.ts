@@ -3,20 +3,24 @@ import { createGround } from './ground';
 import { createCitySector, createGlobalRoadMarkings } from './buildings';
 import { createTempleSector } from './temples';
 import { createBeachSector } from './playground';
+import { createNatureSector } from './nature'; // <--- Import New Scene
 import { createPlayerMachine } from './chariot';
 import { GLOBE_RADIUS } from './curvePlacement';
 
+// 4 Colors for 4 Sectors
 const SECTOR_CONFIG = {
-  city: { fog: 0xffde00 },
-  temple: { fog: 0xFFE0B2 },
-  airport: { fog: 0x87CEEB }
+  city: { fog: 0xffde00 },    // Yellow (Morning)
+  nature: { fog: 0x4caf50 },  // Green (Day/Eco) <-- NEW
+  temple: { fog: 0xFFE0B2 },  // Orange (Sunset)
+  contact: { fog: 0x87CEEB }  // Blue (Clear Sky)
 };
 
+// 4 Navigation Angles
 const ANGLES = {
-  WELCOME: 1.0,
-  ABOUT: 0.2,
-  DEMO: Math.PI,
-  CONTACT: (Math.PI * 5) / 3
+  WELCOME: 0.2,             // Start of City
+  ABOUT: Math.PI * 0.75,    // Middle of Solar Park (135 deg)
+  DEMO: Math.PI * 1.25,     // Middle of Temple (225 deg)
+  CONTACT: Math.PI * 1.75   // Middle of Contact (315 deg)
 };
 
 export function initScene(
@@ -65,14 +69,18 @@ export function initScene(
   const worldGroup = new THREE.Group();
   scene.add(worldGroup);
 
+  // --- BUILD WORLD (4 SECTORS) ---
   createGround(worldGroup);
   createGlobalRoadMarkings(worldGroup);
-  createCitySector(worldGroup);
-  createTempleSector(worldGroup);
-  createBeachSector(worldGroup);
+  
+  createCitySector(worldGroup);   // 0 - 90 deg
+  createNatureSector(worldGroup); // 90 - 180 deg (NEW)
+  createTempleSector(worldGroup); // 180 - 270 deg
+  createBeachSector(worldGroup);  // 270 - 360 deg
 
-  generate3DText(worldGroup, "ABOUT US", ANGLES.ABOUT, "LINK_ABOUT", 15);
+  // --- 3D TEXT LABELS ---
   generate3DText(worldGroup, "WELCOME", ANGLES.WELCOME, "TEXT_WELCOME", 15);
+  generate3DText(worldGroup, "ABOUT US", ANGLES.ABOUT, "LINK_ABOUT", 15);
   generate3DText(worldGroup, "BOOK DEMO", ANGLES.DEMO, "LINK_BOOK_DEMO", 15);
   generate3DText(worldGroup, "CONTACT US", ANGLES.CONTACT, "LINK_CONTACT", 15);
 
@@ -81,11 +89,11 @@ export function initScene(
 
   const { machineScreenMat } = createPlayerMachine(scene);
 
+  // Logic Variables
   let scrollPos = 0;
   let targetScrollPos = 0;
   let isAutoScrolling = false; 
   let autoScrollCallback: (() => void) | null = null;
-
   let animationFrameId: number;
 
   const raycaster = new THREE.Raycaster();
@@ -94,23 +102,22 @@ export function initScene(
   const singleClickNames = ['UPLOAD_BUTTON', 'LINK_BOOK_DEMO', 'LINK_CONTACT', 'LINK_ABOUT'];
   const doubleClickNames = ['TV_SCREEN_FRONT', 'TV_SCREEN_BACK'];
 
+  // Input Handling
   let touchStartY = 0;
   let lastTapTime = 0;
 
   const onTouchStart = (e: TouchEvent) => {
     isAutoScrolling = false; 
     touchStartY = e.touches[0].clientY;
-
     const currentTime = new Date().getTime();
-    const tapLength = currentTime - lastTapTime;
-    if (tapLength < 300 && tapLength > 0) {
+    if (currentTime - lastTapTime < 300) {
+        // Double Tap Logic
         const touch = e.touches[0];
         const rect = renderer.domElement.getBoundingClientRect();
         mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
         mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
         raycaster.setFromCamera(mouse, camera);
-        const intersects = raycaster.intersectObjects(scene.children, true);
-        const hit = intersects.find(i => doubleClickNames.includes(i.object.name));
+        const hit = raycaster.intersectObjects(scene.children, true).find(i => doubleClickNames.includes(i.object.name));
         if (hit) { e.preventDefault(); onMachineClick(); }
     }
     lastTapTime = currentTime;
@@ -132,10 +139,8 @@ export function initScene(
     const rect = renderer.domElement.getBoundingClientRect();
     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-
     raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster.intersectObjects(scene.children, true);
-    const hit = intersects.find(i => singleClickNames.includes(i.object.name));
+    const hit = raycaster.intersectObjects(scene.children, true).find(i => singleClickNames.includes(i.object.name));
 
     if (hit) {
       switch (hit.object.name) {
@@ -152,8 +157,7 @@ export function initScene(
     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster.intersectObjects(scene.children, true);
-    const hit = intersects.find(i => doubleClickNames.includes(i.object.name));
+    const hit = raycaster.intersectObjects(scene.children, true).find(i => doubleClickNames.includes(i.object.name));
     if (hit) { onMachineClick(); }
   };
 
@@ -162,9 +166,7 @@ export function initScene(
     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
-    const allTargets = [...singleClickNames, ...doubleClickNames];
-    const intersects = raycaster.intersectObjects(scene.children, true);
-    const isHovering = intersects.some(i => allTargets.includes(i.object.name));
+    const isHovering = raycaster.intersectObjects(scene.children, true).some(i => [...singleClickNames, ...doubleClickNames].includes(i.object.name));
     document.body.style.cursor = isHovering ? 'pointer' : 'default';
   };
 
@@ -192,28 +194,27 @@ export function initScene(
 
     if (isAutoScrolling && Math.abs(scrollPos - targetScrollPos) < 0.01) {
         isAutoScrolling = false;
-        if (autoScrollCallback) {
-            autoScrollCallback();
-            autoScrollCallback = null;
-        }
+        if (autoScrollCallback) { autoScrollCallback(); autoScrollCallback = null; }
     }
 
     let normRot = scrollPos % (Math.PI * 2);
     if (normRot < 0) normRot += Math.PI * 2;
     
-    // --- FIXED LOGIC START ---
-    // Default is "About Us" (Start of world)
-    let currentVibe = "About Us"; 
+    // --- 4 SECTOR LOGIC ---
+    let currentVibe = "Welcome"; 
     let targetHex = SECTOR_CONFIG.city.fog;
 
-    if (normRot >= (Math.PI * 2) / 3 && normRot < (Math.PI * 4) / 3) {
+    // 0 - PI/2 is Welcome (Default)
+    if (normRot >= Math.PI / 2 && normRot < Math.PI) {
+      currentVibe = "About Us"; 
+      targetHex = SECTOR_CONFIG.nature.fog;
+    } else if (normRot >= Math.PI && normRot < (Math.PI * 3) / 2) {
       currentVibe = "Book Demo"; 
       targetHex = SECTOR_CONFIG.temple.fog;
-    } else if (normRot >= (Math.PI * 4) / 3) {
-      currentVibe = "Contact Us"; // Ensure this matches Nav exactly
-      targetHex = SECTOR_CONFIG.airport.fog;
+    } else if (normRot >= (Math.PI * 3) / 2) {
+      currentVibe = "Contact Us"; 
+      targetHex = SECTOR_CONFIG.contact.fog;
     }
-    // --- FIXED LOGIC END ---
 
     onVibeChange(currentVibe);
 
@@ -224,7 +225,7 @@ export function initScene(
     const delta = carClock.getDelta();
     cars.forEach(car => {
       car.angle += car.speed * delta;
-      if (car.angle > (Math.PI * 2) / 3) car.angle = 0;
+      if (car.angle > Math.PI/2) car.angle = 0; // Reset after City sector
       car.pivot.rotation.x = -car.angle;
     });
 
@@ -271,7 +272,6 @@ export function initScene(
   };
 }
 
-// ... Rest of file (generate3DText, generateCityCars) same as before
 function generate3DText(worldGroup: THREE.Group, textStr: string, angle: number, name: string, extraHeight: number = 12) {
     const canvas = document.createElement('canvas');
     canvas.width = 1024; canvas.height = 512;
@@ -298,9 +298,10 @@ function generate3DText(worldGroup: THREE.Group, textStr: string, angle: number,
 
 function generateCityCars(worldGroup: THREE.Group) {
   const cars: any[] = [];
-  const carCount = 8;
+  const carCount = 5; // Reduced slightly for shorter sector
   const COLORS = [0xE74C3C, 0xE67E22, 0xF1C40F, 0x3498DB];
-  const citySectorEnd = (Math.PI * 2) / 3;
+  const citySectorEnd = Math.PI / 2; // Update limit for cars
+  
   for (let i = 0; i < carCount; i++) {
     const angle = (i / carCount) * citySectorEnd;
     const side = i % 2 === 0 ? 1 : -1;

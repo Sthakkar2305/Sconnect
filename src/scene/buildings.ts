@@ -26,7 +26,7 @@ export function createGlobalRoadMarkings(worldGroup: THREE.Group) {
 
 export function createCitySector(worldGroup: THREE.Group) {
   const sectorStart = 0;
-  const sectorEnd = (Math.PI * 2) / 3;
+  const sectorEnd = Math.PI / 2; // Ends at 90 degrees
   const sectorSize = sectorEnd - sectorStart;
   
   // NOTE: Road markings moved to createGlobalRoadMarkings above.

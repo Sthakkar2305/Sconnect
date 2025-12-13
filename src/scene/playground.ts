@@ -8,7 +8,7 @@ import image3 from '../images/pngtree-3d-coconut-tree-with-large-leaf-cartoon-st
 // ... imports ...
 
 export function createBeachSector(worldGroup: THREE.Group) {
-  const sectorStart = (Math.PI * 4) / 3;
+  const sectorStart = (Math.PI * 3) / 2;
   const sectorEnd = Math.PI * 2;
   const sectorSize = sectorEnd - sectorStart;
 
