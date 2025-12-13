@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-// ... (keep your existing imports) ...
 import { createGround } from './ground';
 import { createCitySector, createGlobalRoadMarkings } from './buildings';
 import { createTempleSector } from './temples';
@@ -8,27 +7,37 @@ import { createPlayerMachine } from './chariot';
 import { GLOBE_RADIUS } from './curvePlacement';
 
 const SECTOR_CONFIG = {
-  Welcome: { fog: 0xffde00 },
-  BookDemo: { fog: 0xFFE0B2 },
-  Contactus: { fog: 0x87CEEB }
+  city: { fog: 0xffde00 },
+  temple: { fog: 0xFFE0B2 },
+  airport: { fog: 0x87CEEB }
+};
+
+const ANGLES = {
+  WELCOME: 1.0,
+  ABOUT: 0.2,
+  DEMO: Math.PI,
+  CONTACT: (Math.PI * 5) / 3
 };
 
 export function initScene(
   container: HTMLDivElement,
   onVibeChange: (vibe: string) => void,
   onMachineClick: () => void,
-  onBookDemoClick: () => void // <--- NEW PARAMETER
+  onBookDemoClick: () => void,
+  onContactClick: () => void,
+  onAboutClick: () => void
 ) {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(SECTOR_CONFIG.Welcome.fog);
-  scene.fog = new THREE.Fog(SECTOR_CONFIG.Welcome.fog, 50, 120);
+  scene.background = new THREE.Color(SECTOR_CONFIG.city.fog);
+  scene.fog = new THREE.Fog(SECTOR_CONFIG.city.fog, 50, 120);
 
-  // ... (Keep camera setup exactly as it was) ...
   const camera = new THREE.PerspectiveCamera(85, window.innerWidth / window.innerHeight, 0.1, 1000);
+
   const updateCameraPosition = () => {
     const aspect = window.innerWidth / window.innerHeight;
     const isPortrait = aspect < 1.0; 
     const isMobile = window.innerWidth < 768;
+
     if (isPortrait || isMobile) {
       camera.position.set(0, GLOBE_RADIUS + 22, 68);
       camera.lookAt(0, GLOBE_RADIUS - 2, -15);
@@ -37,8 +46,8 @@ export function initScene(
       camera.lookAt(0, GLOBE_RADIUS - 5, -60);
     }
   };
+  
   updateCameraPosition();
-  // ...
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -47,46 +56,51 @@ export function initScene(
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
 
-  // ... (Keep lighting and group setup) ...
   scene.add(new THREE.AmbientLight(0xffffff, 0.7));
   const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
   sunLight.position.set(50, 100, 50);
   sunLight.castShadow = true;
   scene.add(sunLight);
+
   const worldGroup = new THREE.Group();
   scene.add(worldGroup);
 
-  // ... (Keep world creation) ...
   createGround(worldGroup);
   createGlobalRoadMarkings(worldGroup);
   createCitySector(worldGroup);
   createTempleSector(worldGroup);
   createBeachSector(worldGroup);
 
-  generate3DText(worldGroup, "Welcome", (Math.PI * 2) / 3 / 2, "TEXT_WELCOME", 15);
-  generate3DText(worldGroup, "BOOK DEMO", Math.PI, "LINK_BOOK_DEMO", 15);
-  generate3DText(worldGroup, "CONTACT US", (Math.PI * 5) / 3, "LINK_CONTACT", 15);
+  generate3DText(worldGroup, "ABOUT US", ANGLES.ABOUT, "LINK_ABOUT", 15);
+  generate3DText(worldGroup, "WELCOME", ANGLES.WELCOME, "TEXT_WELCOME", 15);
+  generate3DText(worldGroup, "BOOK DEMO", ANGLES.DEMO, "LINK_BOOK_DEMO", 15);
+  generate3DText(worldGroup, "CONTACT US", ANGLES.CONTACT, "LINK_CONTACT", 15);
 
   const cars = generateCityCars(worldGroup);
   const carClock = new THREE.Clock();
 
   const { machineScreenMat } = createPlayerMachine(scene);
 
-  // ... (Keep variables) ...
   let scrollPos = 0;
   let targetScrollPos = 0;
+  let isAutoScrolling = false; 
+  let autoScrollCallback: (() => void) | null = null;
+
   let animationFrameId: number;
+
   const raycaster = new THREE.Raycaster();
   const mouse = new THREE.Vector2();
-  
-  const singleClickNames = ['UPLOAD_BUTTON', 'LINK_BOOK_DEMO', 'LINK_CONTACT'];
+
+  const singleClickNames = ['UPLOAD_BUTTON', 'LINK_BOOK_DEMO', 'LINK_CONTACT', 'LINK_ABOUT'];
   const doubleClickNames = ['TV_SCREEN_FRONT', 'TV_SCREEN_BACK'];
 
-  // ... (Keep Touch Logic) ...
   let touchStartY = 0;
   let lastTapTime = 0;
+
   const onTouchStart = (e: TouchEvent) => {
+    isAutoScrolling = false; 
     touchStartY = e.touches[0].clientY;
+
     const currentTime = new Date().getTime();
     const tapLength = currentTime - lastTapTime;
     if (tapLength < 300 && tapLength > 0) {
@@ -101,16 +115,19 @@ export function initScene(
     }
     lastTapTime = currentTime;
   };
+
   const onTouchMove = (e: TouchEvent) => {
+    isAutoScrolling = false;
     targetScrollPos += (touchStartY - e.touches[0].clientY) * 0.005; 
     touchStartY = e.touches[0].clientY;
   };
+  
   const onWheel = (e: WheelEvent) => {
+    isAutoScrolling = false;
     targetScrollPos += e.deltaY * 0.002;
     e.preventDefault();
   };
 
-  // --- UPDATED CLICK HANDLER ---
   const onClick = (e: MouseEvent) => {
     const rect = renderer.domElement.getBoundingClientRect();
     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -122,20 +139,14 @@ export function initScene(
 
     if (hit) {
       switch (hit.object.name) {
-        case 'UPLOAD_BUTTON':
-          onMachineClick();
-          break;
-        case 'LINK_BOOK_DEMO':
-          onBookDemoClick(); // <--- CALL THE NEW NAVIGATOR
-          break;
-        case 'LINK_CONTACT':
-          window.location.href = 'tel:+918758649149';
-          break;
+        case 'UPLOAD_BUTTON': onMachineClick(); break;
+        case 'LINK_BOOK_DEMO': onBookDemoClick(); break;
+        case 'LINK_CONTACT': onContactClick(); break;
+        case 'LINK_ABOUT': onAboutClick(); break;
       }
     }
   };
 
-  // ... (Keep double click, mousemove, resize, animate) ...
   const onDoubleClick = (e: MouseEvent) => {
     const rect = renderer.domElement.getBoundingClientRect();
     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -174,30 +185,68 @@ export function initScene(
 
   function animate() {
     animationFrameId = requestAnimationFrame(animate);
-    scrollPos += (targetScrollPos - scrollPos) * 0.1;
+
+    const lerpFactor = isAutoScrolling ? 0.03 : 0.1;
+    scrollPos += (targetScrollPos - scrollPos) * lerpFactor;
     worldGroup.rotation.x = scrollPos;
+
+    if (isAutoScrolling && Math.abs(scrollPos - targetScrollPos) < 0.01) {
+        isAutoScrolling = false;
+        if (autoScrollCallback) {
+            autoScrollCallback();
+            autoScrollCallback = null;
+        }
+    }
+
     let normRot = scrollPos % (Math.PI * 2);
     if (normRot < 0) normRot += Math.PI * 2;
-    let currentVibe = "Welcome";
-    let targetHex = SECTOR_CONFIG.Welcome.fog;
+    
+    // --- FIXED LOGIC START ---
+    // Default is "About Us" (Start of world)
+    let currentVibe = "About Us"; 
+    let targetHex = SECTOR_CONFIG.city.fog;
+
     if (normRot >= (Math.PI * 2) / 3 && normRot < (Math.PI * 4) / 3) {
-      currentVibe = "Book Demo"; targetHex = SECTOR_CONFIG.BookDemo.fog;
+      currentVibe = "Book Demo"; 
+      targetHex = SECTOR_CONFIG.temple.fog;
     } else if (normRot >= (Math.PI * 4) / 3) {
-      currentVibe = "Contact us"; targetHex = SECTOR_CONFIG.Contactus.fog;
+      currentVibe = "Contact Us"; // Ensure this matches Nav exactly
+      targetHex = SECTOR_CONFIG.airport.fog;
     }
+    // --- FIXED LOGIC END ---
+
     onVibeChange(currentVibe);
+
     const targetColor = new THREE.Color(targetHex);
     (scene.background as THREE.Color).lerp(targetColor, 0.05);
     scene.fog!.color.lerp(targetColor, 0.05);
+
     const delta = carClock.getDelta();
     cars.forEach(car => {
       car.angle += car.speed * delta;
       if (car.angle > (Math.PI * 2) / 3) car.angle = 0;
       car.pivot.rotation.x = -car.angle;
     });
+
     renderer.render(scene, camera);
   }
+
   animate();
+
+  const scrollTo = (target: 'ABOUT' | 'DEMO' | 'CONTACT', onArrival: () => void) => {
+      isAutoScrolling = true;
+      autoScrollCallback = onArrival;
+      
+      const angle = ANGLES[target];
+      const cycle = Math.floor(targetScrollPos / (Math.PI * 2));
+      let newTarget = cycle * (Math.PI * 2) + angle;
+
+      if (newTarget < targetScrollPos - Math.PI) {
+          newTarget += Math.PI * 2;
+      } 
+      
+      targetScrollPos = newTarget;
+  };
 
   return {
     cleanup: () => {
@@ -217,33 +266,34 @@ export function initScene(
         machineScreenMat.map = texture;
         machineScreenMat.needsUpdate = true;
       }
-    }
+    },
+    scrollTo
   };
 }
 
-// ... (Rest of functions: generate3DText, generateCityCars) ...
+// ... Rest of file (generate3DText, generateCityCars) same as before
 function generate3DText(worldGroup: THREE.Group, textStr: string, angle: number, name: string, extraHeight: number = 12) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 1024; canvas.height = 512;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.font = '900 120px "Segoe UI", sans-serif';
-    ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.shadowColor = "rgba(0,0,0,0.5)";
-    ctx.shadowBlur = 10;
-    ctx.strokeStyle = 'black'; ctx.lineWidth = 4;
-    ctx.strokeText(textStr, canvas.width / 2, canvas.height / 2);
-    ctx.fillText(textStr, canvas.width / 2, canvas.height / 2);
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(30, 15), new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide }));
-  mesh.name = name;
-  mesh.position.y = GLOBE_RADIUS + extraHeight;
-  const pivot = new THREE.Object3D();
-  pivot.rotation.x = -angle;
-  pivot.add(mesh);
-  worldGroup.add(pivot);
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024; canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.font = '900 120px "Segoe UI", sans-serif';
+      ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.shadowColor = "rgba(0,0,0,0.5)";
+      ctx.shadowBlur = 10;
+      ctx.strokeStyle = 'black'; ctx.lineWidth = 4;
+      ctx.strokeText(textStr, canvas.width / 2, canvas.height / 2);
+      ctx.fillText(textStr, canvas.width / 2, canvas.height / 2);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(30, 15), new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide }));
+    mesh.name = name;
+    mesh.position.y = GLOBE_RADIUS + extraHeight;
+    const pivot = new THREE.Object3D();
+    pivot.rotation.x = -angle;
+    pivot.add(mesh);
+    worldGroup.add(pivot);
 }
 
 function generateCityCars(worldGroup: THREE.Group) {
