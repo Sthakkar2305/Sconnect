@@ -17,7 +17,7 @@ const SECTOR_CONFIG = {
 const ANGLES = {
   WELCOME: 0.7,
   ABOUT: Math.PI * 0.75,
-  DEMO: Math.PI + 0.4,
+  DEMO: Math.PI + 0.8,
   CONTACT: Math.PI * 1.75
 };
 
